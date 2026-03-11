@@ -1,0 +1,82 @@
+#!/bin/bash
+set -e
+
+echo "=== Stratum Sourcing Monitor - Starting ==="
+
+# Ensure persistent volume directories exist
+mkdir -p "${DATA_DIR:-/data}/browser/profile"
+mkdir -p "${DATA_DIR:-/data}/cache"
+mkdir -p "${DATA_DIR:-/data}/logs"
+
+echo "--- Running database migrations ---"
+python -m alembic upgrade head
+
+echo "--- Seeding sources (if needed) ---"
+python -c "
+import asyncio, json, sys
+from pathlib import Path
+
+async def seed():
+    from app.database import async_session_factory
+    from app.models import Source
+    from sqlalchemy import select
+
+    async with async_session_factory() as db:
+        result = await db.execute(select(Source).limit(1))
+        if result.scalar_one_or_none():
+            print('Sources already seeded, skipping')
+            return
+
+        seeds_file = Path('seeds/sources.json')
+        if not seeds_file.exists():
+            print('No seeds/sources.json found, skipping')
+            return
+
+        sources = json.loads(seeds_file.read_text())
+        for s in sources:
+            db.add(Source(
+                name=s['name'],
+                category=s['category'],
+                fetch_strategy=s['fetch_strategy'],
+                url=s.get('url'),
+                secondary_urls=s.get('secondary_urls', []),
+                config=s.get('config', {}),
+                verticals=s.get('verticals', []),
+                description=s.get('description'),
+                is_active=s.get('is_active', True),
+            ))
+        await db.commit()
+        print(f'Seeded {len(sources)} sources')
+
+asyncio.run(seed())
+" || echo "Warning: Source seeding failed, continuing..."
+
+echo "--- Starting FastAPI sidecar (port 8081) ---"
+uvicorn app.main:app --host 0.0.0.0 --port 8081 --log-level info &
+FASTAPI_PID=$!
+
+# Start OpenClaw gateway if configured
+if [ -f "src/server.js" ] && [ -n "${OPENCLAW_STATE_DIR:-}" ]; then
+    echo "--- Starting OpenClaw gateway (port 8080) ---"
+    cd src && node server.js &
+    OPENCLAW_PID=$!
+    cd ..
+else
+    echo "--- OpenClaw gateway not configured, skipping ---"
+    OPENCLAW_PID=""
+fi
+
+# Wait for either process to exit
+cleanup() {
+    echo "=== Shutting down ==="
+    kill $FASTAPI_PID 2>/dev/null || true
+    [ -n "$OPENCLAW_PID" ] && kill $OPENCLAW_PID 2>/dev/null || true
+    wait
+}
+trap cleanup SIGTERM SIGINT
+
+if [ -n "$OPENCLAW_PID" ]; then
+    wait -n $FASTAPI_PID $OPENCLAW_PID
+else
+    wait $FASTAPI_PID
+fi

@@ -1,0 +1,1200 @@
+[
+  {
+    "name": "That’ll be some of the most relevant work for now, finding these free/cheap information streams and ingesting them once per day, surfacing new companies and keeping us up to date with the latest developments",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Lex Sokolin",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/alexsokolin/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Linas Beliunas",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/linasbeliunas/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Kate Kirsch",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/katekirsch/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Ronit Ghose",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/ronitghose/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Harry Stebbings",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/harrystebbings/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Rune Christensen",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/runebentsenchristensen/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "Co-founder, MakerDAO — DeFi pioneer & governance thought leader.",
+    "is_active": true
+  },
+  {
+    "name": "Sergey Nazarov",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/sergeynazarov/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "Co-founder, Chainlink — oracle infrastructure influencing DeFi composability.",
+    "is_active": true
+  },
+  {
+    "name": "Meltem Demirors",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/meltemdemirors/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "CSO, CoinShares — institutional crypto strategy & macro trends.",
+    "is_active": true
+  },
+  {
+    "name": "Ivan Liljeqvist (Ivan on Tech)",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/ivanliljeqvist/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "blockchain educator & developer ecosystem voice.",
+    "is_active": true
+  },
+  {
+    "name": "Harvet",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/harvet/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "Swiss entrepreneur & investor (Crypto Finance Group, Swiss Blockchain Federation).",
+    "is_active": true
+  },
+  {
+    "name": "Aron Landy",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/aronlandy/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "CEO Brevan Howard Digital — bridging macro hedge fund capital and crypto assets.",
+    "is_active": true
+  },
+  {
+    "name": "Harvey Li",
+    "category": "person",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/harveyli/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Teknikföretagen",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "a16z",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://a16zcrypto.com/posts",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "McKinsey",
+    "category": "association",
+    "fetch_strategy": "rss",
+    "url": "https://www.mckinsey.com/industries/financial-services/our-insights/rss",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": false
+  },
+  {
+    "name": "BCG",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.bcg.com/publications/financial-institutions",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "D-fine",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.d-fine.com/en/insights",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Deloitte",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.deloitte.com/global/en/Industries/financial-services/perspectives.html",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Nordic Blockchain Association",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.nordicblockchain.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Blockchain Sweden",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://blockchainsweden.se/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "JPM",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.jpmorgan.com/insights/payments/blockchain-digital-assets",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "GS",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/harrystebbings/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "State Street",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.statestreet.com/us/en/institutional-investor/insights/digital-assets",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Blackrock",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.blackrock.com/corporate/insights/digital-assets",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "SEB",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://sebgroup.com/press/press-releases",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Deutsche",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.db.com/media/news?language_id=1",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "21x",
+    "category": "association",
+    "fetch_strategy": "browser",
+    "url": "https://www.21x.eu",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Citigroup",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.citigroup.com/global/insights",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Ethereum (Foundation)",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://blog.ethereum.org/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Solana",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://solana.com/news",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Banque SYZ",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.syzgroup.com/insights",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "European Blockchain Association",
+    "category": "association",
+    "fetch_strategy": "web_scrape",
+    "url": "https://europeanblockchainassociation.org/news/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "pan-EU ecosystem coordination body.",
+    "is_active": true
+  },
+  {
+    "name": "Ethereum Weekly",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://weekinethereum.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "team@bankless.com",
+    "is_active": true
+  },
+  {
+    "name": "a16z crypto",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://a16zcrypto.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "a16zcrypto@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "AI Proem",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://aiproem.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "aiproem@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Bankless",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "http://feeds.libsyn.com/247424/rss",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "team@bankless.com",
+    "is_active": true
+  },
+  {
+    "name": "european women in VC",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://europeanwomenvc.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "europeanwomenvc@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Breakit",
+    "category": "newsletter",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.breakit.se",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Fintech Brainfood by Simon Taylor",
+    "category": "newsletter",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.fintechbrainfood.com",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "Weekly fintech newsletter by Simon Taylor",
+    "is_active": true
+  },
+  {
+    "name": "Dagens Industri",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://www.di.se/rss",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "the Defiant",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://thedefiant.io/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "no-reply@mail.thedefiant.io",
+    "is_active": true
+  },
+  {
+    "name": "The Fintech Blueprint",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://lex.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "lex@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Linas from Linas's Newsletter",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://linas.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "linas@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Fintech Business Weekly",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://fintechbusinessweekly.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "fintechbusinessweekly@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Michael Spencer from AI Supremacy",
+    "category": "newsletter",
+    "fetch_strategy": "rss",
+    "url": "https://aisupremacy.substack.com/feed",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "aisupremacy@substack.com",
+    "is_active": true
+  },
+  {
+    "name": "Tokenization Insight",
+    "category": "newsletter",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.tokenizationinsight.com/weeklyresearch",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "KTH",
+    "category": "university",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.kth.se/en/aktuellt/nyheter",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "compliance_trust"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "MIT \nStanford",
+    "category": "university",
+    "fetch_strategy": "web_scrape",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "compliance_trust"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Dr. Jörn Erbguth",
+    "category": "university",
+    "fetch_strategy": "web_scrape",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "compliance_trust"
+    ],
+    "description": "President, Geneva Macro Labs & blockchain consultant — cross-disciplinary DeFi research.",
+    "is_active": true
+  },
+  {
+    "name": "Dimitris Psarrakis",
+    "category": "university",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/dpsarrakis/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "compliance_trust"
+    ],
+    "description": "Senior Fellow, Wharton Business School — financial tech & tokenisation research",
+    "is_active": true
+  },
+  {
+    "name": "EU eIDAS and blockchain integration research",
+    "category": "university",
+    "fetch_strategy": "web_scrape",
+    "url": "https://digital-strategy.ec.europa.eu/en/policies/eidas-regulation",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "compliance_trust"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Money 2020",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://europe.money2020.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Stockholm Fintech week",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.stockholmfintechweek.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Nordic Fintech week",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://nordicfintechweek.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "European Blockchain Convention (Barcelona)",
+    "category": "conference",
+    "fetch_strategy": "browser",
+    "url": "https://eblockchainconvention.com/blog/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "Europe’s flagship blockchain event with investment, tokenisation, and DeFi discourse.",
+    "is_active": true
+  },
+  {
+    "name": "London Tokenisation Summit",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.londontokenisationsummit.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "focused specifically on tokenised financial markets & regulation.",
+    "is_active": false
+  },
+  {
+    "name": "Nordic Blockchain Conference (Stockholm)",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://nordicblockchainconference.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "leading Northern Europe Web3 gathering; strong on regulation/finance themes",
+    "is_active": false
+  },
+  {
+    "name": "Blockchain for Europe Summit (Brussels)",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.blockchain4europe.eu/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "policy + industry roadmap on MiCA, DLT Pilot Regime, tokenisation.",
+    "is_active": true
+  },
+  {
+    "name": "Digital Assets Forum (London)",
+    "category": "conference",
+    "fetch_strategy": "browser",
+    "url": "https://eblockchainconvention.com/digital-assets-forum-blog/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "investor-centered insights.",
+    "is_active": true
+  },
+  {
+    "name": "Crypto Valley Conference (Switzerland)",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.cryptovalleyconference.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "enterprise + research mix.",
+    "is_active": true
+  },
+  {
+    "name": "BTC Prague",
+    "category": "conference",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.btcprague.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "broader blockchain engagement and developer audience.",
+    "is_active": true
+  },
+  {
+    "name": "Outlier Ventures",
+    "category": "vc",
+    "fetch_strategy": "web_scrape",
+    "url": "https://outlierventures.io/research/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "European Web3 accelerator/backer (early-stage).",
+    "is_active": true
+  },
+  {
+    "name": "Fabric Ventures",
+    "category": "vc",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.fabric.vc/writing",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "London-based crypto+Web3 investor (wide DeFi + tokenisation portfolio).",
+    "is_active": true
+  },
+  {
+    "name": "BlueYard Capital",
+    "category": "vc",
+    "fetch_strategy": "rss",
+    "url": "https://blueyard.medium.com/feed",
+    "secondary_urls": [
+      "https://blueyard.com/"
+    ],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "early Web3/infrastructure bets",
+    "is_active": true
+  },
+  {
+    "name": "Signature Ventures (Munich)",
+    "category": "vc",
+    "fetch_strategy": "browser",
+    "url": "https://www.signatureventures.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "blockchain + open internet thesis.",
+    "is_active": true
+  },
+  {
+    "name": "Greenfield One",
+    "category": "vc",
+    "fetch_strategy": "browser",
+    "url": "https://greenfieldcapital.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "large crypto fund with DeFi/chain ecosystem investments.",
+    "is_active": true
+  },
+  {
+    "name": "Kraken Ventures",
+    "category": "vc",
+    "fetch_strategy": "browser",
+    "url": "https://www.kraken.com/sv/press",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "exchange-backed VC targeting European crypto projects",
+    "is_active": true
+  },
+  {
+    "name": "Balderton Capital",
+    "category": "vc",
+    "fetch_strategy": "browser",
+    "url": "https://www.balderton.com/resources",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "London firm backing fintech + tokenised finance plays.",
+    "is_active": true
+  },
+  {
+    "name": "Tritemius Capital (Spain)",
+    "category": "vc",
+    "fetch_strategy": "web_scrape",
+    "url": "https://tritemius.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": "new Web3/crypto fund focused on early stage tokenised risk, privacy & DeFi.",
+    "is_active": true
+  },
+  {
+    "name": "NFT Ventures",
+    "category": "vc",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.nftventures.com/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "identity_permissioning",
+      "wallets_key_management",
+      "compliance_trust",
+      "data_oracles_middleware"
+    ],
+    "description": null,
+    "is_active": true
+  },
+  {
+    "name": "Stephan Mögelin",
+    "category": "regulator",
+    "fetch_strategy": "web_scrape",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "compliance_trust",
+      "identity_permissioning"
+    ],
+    "description": "Lead Senior Officer, BaFin, chair of ESMA DLT Working Group — key voice on EU tokenisation regulation & DLT Pilot Regime.",
+    "is_active": true
+  },
+  {
+    "name": "Juan Ignacio Ibañez",
+    "category": "regulator",
+    "fetch_strategy": "web_scrape",
+    "url": null,
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "compliance_trust",
+      "identity_permissioning"
+    ],
+    "description": "MiCA Crypto Alliance and lecturer/researcher — essential on EU tokenisation policy.",
+    "is_active": true
+  },
+  {
+    "name": "Peter Kerstens",
+    "category": "regulator",
+    "fetch_strategy": "browser",
+    "url": "https://www.linkedin.com/in/peterkerstens/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "compliance_trust",
+      "identity_permissioning"
+    ],
+    "description": "EU Commission DG FISMA advisor (tokenisation & digital assets speaker).",
+    "is_active": true
+  },
+  {
+    "name": "Blockchain for Europe",
+    "category": "regulator",
+    "fetch_strategy": "web_scrape",
+    "url": "https://www.blockchain4europe.eu/news/",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "compliance_trust",
+      "identity_permissioning"
+    ],
+    "description": "flagship policy association connecting EU regulators, industry and startups (Brussels).",
+    "is_active": true
+  },
+  {
+    "name": "Capital Markets and Technology Association (CMTA)",
+    "category": "regulator",
+    "fetch_strategy": "browser",
+    "url": "https://cmta.ch/news-articles",
+    "secondary_urls": [],
+    "config": {},
+    "verticals": [
+      "compliance_trust",
+      "identity_permissioning"
+    ],
+    "description": "Swiss standards & tokenisation infrastructure association.",
+    "is_active": true
+  }
+]

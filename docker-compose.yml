@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: stratum_sourcing
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/stratum_sourcing
+      DATA_DIR: /data
+      CRON_SECRET: dev-secret
+    depends_on:
+      - db
+    volumes:
+      - app_data:/data
+      - .:/app
+
+volumes:
+  pgdata:
+  app_data:

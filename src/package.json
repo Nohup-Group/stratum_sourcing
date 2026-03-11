@@ -1,0 +1,14 @@
+{
+  "name": "stratum-sourcing-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw gateway wrapper for Stratum Sourcing Monitor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "http-proxy": "^1.18.1"
+  }
+}

@@ -1,0 +1,57 @@
+[project]
+name = "stratum-sourcing"
+version = "0.1.0"
+description = "Sourcing monitoring tool for Stratum 3Ventures"
+requires-python = ">=3.10"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "psycopg2-binary>=2.9.10",
+    # HTTP & scraping
+    "httpx>=0.28.0",
+    "beautifulsoup4>=4.12.0",
+    "feedparser>=6.0.0",
+    "lxml>=5.0.0",
+    # Browser automation
+    "playwright>=1.49.0",
+    # Slack
+    "slack-bolt>=1.21.0",
+    "slack-sdk>=3.33.0",
+    # Notion
+    "notion-client>=2.2.0",
+    # LLM
+    "anthropic>=0.40.0",
+    # Config
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    # Excel parsing (for seed script)
+    "openpyxl>=3.1.0",
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "structlog>=24.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
