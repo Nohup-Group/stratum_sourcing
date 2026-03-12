@@ -51,8 +51,9 @@ async def seed():
 asyncio.run(seed())
 " || echo "Warning: Source seeding failed, continuing..."
 
-echo "--- Starting FastAPI sidecar (port 8081) ---"
-uvicorn app.main:app --host 0.0.0.0 --port 8081 --log-level info &
+FASTAPI_PORT="${PORT:-8081}"
+echo "--- Starting FastAPI sidecar (port $FASTAPI_PORT) ---"
+uvicorn app.main:app --host 0.0.0.0 --port "$FASTAPI_PORT" --log-level info &
 FASTAPI_PID=$!
 
 # Start OpenClaw gateway if configured
