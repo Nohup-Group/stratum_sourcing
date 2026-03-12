@@ -18,7 +18,8 @@ WORKDIR /app
 
 # Python dependencies (deps-only layer for Docker cache)
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir $(python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text()); print(' '.join(d['project']['dependencies']))") \
+RUN python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text()); pathlib.Path('requirements.txt').write_text('\n'.join(d['project']['dependencies']))" \
+    && pip install --no-cache-dir -r requirements.txt \
     && playwright install chromium
 
 # Node dependencies (OpenClaw gateway wrapper)
@@ -35,8 +36,5 @@ RUN useradd -m -s /bin/bash appuser && \
     chown -R appuser:appuser /data /app
 
 EXPOSE 8080 8081
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8081/healthz || exit 1
 
 CMD ["./entrypoint.sh"]
