@@ -1,21 +1,5 @@
 [
   {
-    "name": "That’ll be some of the most relevant work for now, finding these free/cheap information streams and ingesting them once per day, surfacing new companies and keeping us up to date with the latest developments",
-    "category": "newsletter",
-    "fetch_strategy": "rss",
-    "url": null,
-    "secondary_urls": [],
-    "config": {},
-    "verticals": [
-      "identity_permissioning",
-      "wallets_key_management",
-      "compliance_trust",
-      "data_oracles_middleware"
-    ],
-    "description": null,
-    "is_active": true
-  },
-  {
     "name": "Lex Sokolin",
     "category": "person",
     "fetch_strategy": "browser",
