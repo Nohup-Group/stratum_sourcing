@@ -13,11 +13,13 @@ async def run_morning_digest() -> None:
     """Send the morning Slack digest."""
     logger.info("morning_digest_starting")
     try:
-        sent = await send_morning_digest()
+        sent = await asyncio.wait_for(send_morning_digest(), timeout=120)
         if sent:
             logger.info("morning_digest_sent")
         else:
             logger.info("morning_digest_skipped")
+    except asyncio.TimeoutError:
+        logger.error("morning_digest_timeout", msg="Task exceeded 120s timeout")
     except Exception as e:
         logger.error("morning_digest_failed", error=str(e))
         raise

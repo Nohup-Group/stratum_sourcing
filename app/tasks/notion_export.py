@@ -14,13 +14,15 @@ async def run_notion_sync() -> None:
     logger.info("notion_sync_starting")
     try:
         # Push new findings to Notion
-        synced = await sync_findings_to_notion()
+        synced = await asyncio.wait_for(sync_findings_to_notion(), timeout=600)
         logger.info("notion_push_complete", synced=synced)
 
         # Pull status changes from Notion
-        updated = await pull_status_updates()
+        updated = await asyncio.wait_for(pull_status_updates(), timeout=300)
         logger.info("notion_pull_complete", updated=updated)
 
+    except asyncio.TimeoutError:
+        logger.error("notion_sync_timeout", msg="Task exceeded timeout")
     except Exception as e:
         logger.error("notion_sync_failed", error=str(e))
         raise
