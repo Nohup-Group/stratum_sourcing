@@ -60,7 +60,7 @@ appears to be very recent (e.g., uses language like "today", "this week", "just 
 Always respond with valid JSON: {{"findings": [...]}}.
 Each finding has:
 - title (max 100 chars)
-- summary (2-3 sentences on why this matters for Stratum)
+- summary (2-3 SHORT sentences, max 180 chars total. Be specific: include names, amounts, dates. No trailing ellipsis.)
 - category: funding_round, product_launch, partnership, regulatory, hiring, research, market_move, opinion
 - published_date: ISO date string (YYYY-MM-DD) if you can determine when this was published, null otherwise
 - relevance_score: 0.0-1.0 float rating how relevant this is to Stratum's thesis. Use this scale:

@@ -276,10 +276,7 @@ def _build_digest_blocks(findings: list[Finding], entities: list[str]) -> list[d
             links = [f"<{ev.url}|source>" for ev in f.evidence_items[:2]]
             evidence_links = " | ".join(links)
 
-        # Truncate summary at word boundary
         summary = f.summary
-        if len(summary) > 200:
-            summary = summary[:200].rsplit(" ", 1)[0] + "…"
 
         blocks.append({
             "type": "section",

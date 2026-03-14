@@ -107,9 +107,28 @@ class RSSFetcher(BaseFetcher):
                 articles.append(result)
         return articles
 
+    @staticmethod
+    def _get_entry_link(entry: dict) -> str:
+        """Get the best web URL from an RSS entry, skipping audio/video links."""
+        # Try the standard link field first
+        link = entry.get("link", "").strip()
+        if link and not link.endswith((".mp3", ".mp4", ".m4a", ".ogg", ".wav")):
+            return link
+
+        # Check links array for a web link (not enclosure)
+        for link_obj in entry.get("links", []):
+            href = link_obj.get("href", "")
+            link_type = link_obj.get("type", "")
+            rel = link_obj.get("rel", "")
+            if href and rel != "enclosure" and not link_type.startswith(("audio/", "video/")):
+                return href
+
+        # No usable web URL
+        return ""
+
     async def _fetch_single_article(self, entry: dict) -> str | None:
         """Fetch and extract article text from an entry's link."""
-        link = entry.get("link", "")
+        link = self._get_entry_link(entry)
         if not link:
             return None
 
@@ -157,7 +176,7 @@ class RSSFetcher(BaseFetcher):
     def _entry_to_summary(self, entry: dict) -> str:
         """Format a single RSS entry as text (fallback when full fetch fails)."""
         title = entry.get("title", "")
-        link = entry.get("link", "")
+        link = self._get_entry_link(entry)
         published = entry.get("published", "")
         summary = entry.get("summary", "")
         if summary:
@@ -165,9 +184,10 @@ class RSSFetcher(BaseFetcher):
             if len(summary) > 1000:
                 summary = summary[:1000] + "..."
 
+        url_line = f"URL: {link}\n" if link else ""
         return (
             f"## {title}\n"
-            f"URL: {link}\n"
+            f"{url_line}"
             f"Published: {published}\n"
             f"{summary}\n"
         )
