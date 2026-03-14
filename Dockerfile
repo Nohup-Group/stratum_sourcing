@@ -7,10 +7,8 @@ COPY --from=node-base /usr/local/bin/node /usr/local/bin/
 COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 
-# Install Playwright system dependencies
+# System deps: curl/git + Playwright's own dependency installer (covers all libs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libatk-bridge2.0-0 libdrm2 libxcomposite1 libxdamage1 \
-    libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 \
     curl ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,7 +18,8 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('pyproject.toml').read_text()); pathlib.Path('requirements.txt').write_text('\n'.join(d['project']['dependencies']))" \
     && pip install --no-cache-dir -r requirements.txt \
-    && playwright install chromium
+    && playwright install chromium \
+    && playwright install-deps chromium
 
 # Node dependencies (OpenClaw gateway wrapper)
 COPY src/package.json src/
