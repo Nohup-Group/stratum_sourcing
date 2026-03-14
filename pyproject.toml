@@ -22,6 +22,7 @@ dependencies = [
     # Slack
     "slack-bolt>=1.21.0",
     "slack-sdk>=3.33.0",
+    "aiohttp>=3.9.0",
     # Notion
     "notion-client>=2.2.0",
     # LLM
