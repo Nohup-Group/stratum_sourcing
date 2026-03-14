@@ -1,7 +1,7 @@
 """Relevance scoring for findings against Stratum's verticals and thesis."""
 
 import hashlib
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import structlog
 
@@ -60,6 +60,37 @@ SOURCE_AUTHORITY: dict[str, float] = {
 }
 
 
+def _compute_recency(raw_finding: dict) -> float:
+    """Compute recency score from published_date.
+
+    Returns 1.0 for today, decays to 0.0 for content older than 14 days.
+    If no date is available, assumes recent (0.8).
+    """
+    pub_date_str = raw_finding.get("published_date")
+    if not pub_date_str:
+        return 0.3  # No date available — penalize undated content
+
+    try:
+        pub_date = datetime.strptime(pub_date_str[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return 0.8
+
+    days_old = (date.today() - pub_date).days
+    if days_old < 0:
+        return 1.0  # Future date, treat as today
+    if days_old <= 1:
+        return 1.0
+    if days_old <= 3:
+        return 0.9
+    if days_old <= 7:
+        return 0.7
+    if days_old <= 14:
+        return 0.4
+    if days_old <= 30:
+        return 0.2
+    return 0.05  # Older than 30 days — near-zero
+
+
 def score_finding(raw_finding: dict, source: Source) -> dict:
     """Score a raw finding for relevance to Stratum's thesis.
 
@@ -81,14 +112,18 @@ def score_finding(raw_finding: dict, source: Source) -> dict:
     existing_tags = raw_finding.get("vertical_tags", [])
     all_tags = list(set(existing_tags + auto_tags))
 
+    # --- Recency: decay score based on published_date ---
+    recency = _compute_recency(raw_finding)
+
     # --- Score: prefer LLM score, fallback to keyword ---
     llm_score = raw_finding.get("relevance_score")
 
     if llm_score is not None and isinstance(llm_score, (int, float)):
-        # LLM scored it — use directly, with light source authority adjustment
+        # LLM scored it — blend with source authority and apply recency
         authority = SOURCE_AUTHORITY.get(source.category, 0.5)
-        # Blend: 85% LLM judgment + 15% source authority
-        relevance_score = 0.85 * float(llm_score) + 0.15 * authority
+        base_score = 0.85 * float(llm_score) + 0.15 * authority
+        # Apply recency as a multiplier — old content gets heavily penalized
+        relevance_score = base_score * recency
     else:
         # Fallback: keyword-based scoring
         vertical_alignment = max(vertical_scores.values()) if vertical_scores else 0.0
@@ -99,7 +134,6 @@ def score_finding(raw_finding: dict, source: Source) -> dict:
         stage_hits = sum(1 for kw in EARLY_STAGE_KEYWORDS if kw.lower() in text)
         stage_fit = min(stage_hits / 2, 1.0)
 
-        recency = 1.0
         authority = SOURCE_AUTHORITY.get(source.category, 0.5)
 
         CATEGORY_BONUS = {

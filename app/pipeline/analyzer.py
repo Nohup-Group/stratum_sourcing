@@ -6,6 +6,7 @@ with structured Pydantic output schemas.
 """
 
 import json
+from datetime import datetime, timezone
 
 import structlog
 from pydantic import BaseModel
@@ -28,6 +29,7 @@ class RawFinding(BaseModel):
     summary: str
     category: str = "opinion"
     relevance_score: float | None = None
+    published_date: str | None = None
     vertical_tags: list[str] = []
     evidence: list[EvidenceItem] = []
     entities: list[str] = []
@@ -35,9 +37,13 @@ class RawFinding(BaseModel):
 
 # --- Base system prompt (shared context for all categories) ---
 
-BASE_SYSTEM = """\
+def _build_system_prompt() -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"""\
 You are a structured data extraction assistant for Stratum 3Ventures, \
 a VC fund investing in Layer 3 infrastructure at the TradFi-DeFi intersection.
+
+Today's date: {today}
 
 The fund's four verticals:
 1. Identity & Permissioning (digital identity, eID, eIDAS, verifiable credentials, access control)
@@ -47,11 +53,16 @@ The fund's four verticals:
 
 The fund targets Seed/Series A European companies building regulated tokenised market infrastructure.
 
-Always respond with valid JSON: {"findings": [...]}.
+IMPORTANT: Only extract findings from content published within the last 7 days. \
+Skip anything older. If you cannot determine the date, include it only if it \
+appears to be very recent (e.g., uses language like "today", "this week", "just announced").
+
+Always respond with valid JSON: {{"findings": [...]}}.
 Each finding has:
 - title (max 100 chars)
 - summary (2-3 sentences on why this matters for Stratum)
 - category: funding_round, product_launch, partnership, regulatory, hiring, research, market_move, opinion
+- published_date: ISO date string (YYYY-MM-DD) if you can determine when this was published, null otherwise
 - relevance_score: 0.0-1.0 float rating how relevant this is to Stratum's thesis. Use this scale:
   0.9-1.0: Direct hit (EU Seed/A startup in our verticals, or major regulatory shift like MiCA)
   0.7-0.9: Strong signal (funding in adjacent infra, key partnership, regulatory consultation)
@@ -59,9 +70,9 @@ Each finding has:
   0.3-0.5: Weak signal (tangentially related, US-only, late-stage)
   0.0-0.3: Noise (not relevant enough to surface)
 - vertical_tags: one or more of [identity_permissioning, wallets_key_management, compliance_trust, data_oracles_middleware]
-- evidence: [{url, excerpt}] with source URL and supporting quote
+- evidence: [{{url, excerpt}}] with source URL and supporting quote
 - entities: company/org names mentioned
-If nothing noteworthy, return {"findings": []}."""
+If nothing noteworthy or everything is older than 7 days, return {{"findings": []}}."""
 
 
 # --- Per-category worker prompts (different instructions per source type) ---
@@ -253,7 +264,7 @@ async def analyze_diff(
     try:
         response = await call_llm(
             prompt=prompt,
-            system=BASE_SYSTEM,
+            system=_build_system_prompt(),
             max_tokens=4096,
         )
 
