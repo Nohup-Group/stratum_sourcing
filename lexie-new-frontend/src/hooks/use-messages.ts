@@ -97,7 +97,7 @@ function toRuntimeAttachments(
 }
 
 const CONNECTION_STATUS_MESSAGE =
-  "Verbindung unterbrochen. Es wird automatisch erneut verbunden.";
+  "Connection interrupted. Reconnecting automatically.";
 const GATEWAY_STARTING_MESSAGE =
   "Der Agent startet noch. Bitte in ein paar Sekunden erneut versuchen.";
 const OVERLOAD_REQUEST_MESSAGE =
@@ -107,7 +107,7 @@ const OVERLOAD_RECOVERY_MESSAGE =
 const WEB_SEARCH_UNAVAILABLE_MESSAGE =
   "Web-Recherche ist derzeit nicht konfiguriert.";
 const REQUEST_ERROR_MESSAGE =
-  "Die Anfrage konnte gerade nicht abgeschlossen werden.";
+  "The request could not be completed right now.";
 
 function isRecoverableRequestErrorMessage(raw: string): boolean {
   return /temporarily overloaded|service is temporarily overloaded|overloaded|failovererror/i.test(

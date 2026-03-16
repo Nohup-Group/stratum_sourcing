@@ -27,6 +27,17 @@ const ROOT_FILES = [
 ];
 const MANAGED_DIRS = ["knowledge", "skills"];
 
+function splitAllowedOrigins(raw) {
+  if (typeof raw !== "string") {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 async function ensureDir(dirPath) {
   await fs.mkdir(dirPath, { recursive: true });
 }
@@ -114,6 +125,9 @@ async function patchOpenClawConfig() {
   const config = await readJsonSafe(CONFIG_PATH, {});
   const agents = ensureObject(config, "agents");
   const defaults = ensureObject(agents, "defaults");
+  const gateway = ensureObject(config, "gateway");
+  const gatewayAuth = ensureObject(gateway, "auth");
+  const gatewayControlUi = ensureObject(gateway, "controlUi");
   const memorySearch = ensureObject(defaults, "memorySearch");
   const experimental = ensureObject(memorySearch, "experimental");
   const remote = ensureObject(memorySearch, "remote");
@@ -125,6 +139,11 @@ async function patchOpenClawConfig() {
   const session = ensureObject(config, "session");
   const skills = ensureObject(config, "skills");
   const skillLoad = ensureObject(skills, "load");
+  const configuredOrigins = new Set(
+    Array.isArray(gatewayControlUi.allowedOrigins)
+      ? gatewayControlUi.allowedOrigins.filter((value) => typeof value === "string")
+      : [],
+  );
 
   defaults.workspace = WORKSPACE_ROOT;
 
@@ -143,6 +162,24 @@ async function patchOpenClawConfig() {
   memoryFlush.enabled = true;
 
   session.dmScope = "per-channel-peer";
+
+  if (process.env.OPENCLAW_GATEWAY_TOKEN) {
+    gatewayAuth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
+  }
+
+  for (const origin of splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS)) {
+    configuredOrigins.add(origin);
+  }
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    configuredOrigins.add(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+  }
+  gatewayControlUi.allowedOrigins = Array.from(configuredOrigins);
+
+  if (!Array.isArray(gateway.trustedProxies)) {
+    gateway.trustedProxies = [];
+  }
+  appendUnique(gateway.trustedProxies, "127.0.0.1");
+  appendUnique(gateway.trustedProxies, "::1");
 
   if (!Array.isArray(skillLoad.extraDirs)) {
     skillLoad.extraDirs = [];
