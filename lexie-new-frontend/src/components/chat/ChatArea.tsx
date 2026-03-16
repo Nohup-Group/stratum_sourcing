@@ -58,7 +58,7 @@ export default function ChatArea({
   const webSearchAvailable = chatCapabilities?.webSearch.available === true;
   const webSearchDisabled = !hasSession || webSearchLoading || !webSearchAvailable;
   const subtitle = currentSession
-    ? "Persistent session for this browser"
+    ? null
     : "Start a new chat or type to open one automatically";
 
   return (
@@ -89,9 +89,11 @@ export default function ChatArea({
                 </span>
               )}
             </div>
-            <div className="truncate text-[11px] text-muted-foreground sm:text-xs">
-              {subtitle}
-            </div>
+            {subtitle ? (
+              <div className="truncate text-[11px] text-muted-foreground sm:text-xs">
+                {subtitle}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">

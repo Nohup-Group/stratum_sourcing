@@ -177,9 +177,6 @@ export default function Sidebar({
               alt="Stratum"
               className="hidden h-auto w-[13.5rem] max-w-full object-contain object-left dark:block"
             />
-            <p className="mt-3 max-w-[16rem] text-xs leading-5 text-muted-foreground">
-              Lexie for Stratum sourcing workflows. Sessions stay scoped to this browser.
-            </p>
           </div>
 
           <Button variant="ghost" size="icon-xs" onClick={onToggle} className="rounded-full">
