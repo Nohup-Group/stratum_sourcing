@@ -1,0 +1,12 @@
+{
+  "name": "lexie-new",
+  "private": true,
+  "description": "Standalone OpenClaw Railway service for Lexie cutover",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "lint": "node --check server.js"
+  }
+}
