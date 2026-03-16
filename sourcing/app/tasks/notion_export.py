@@ -4,22 +4,17 @@ import asyncio
 
 import structlog
 
-from app.integrations.notion_sync import pull_status_updates, sync_findings_to_notion
+from app.integrations.notion_sync import run_full_notion_sync
 
 logger = structlog.get_logger()
 
 
 async def run_notion_sync() -> None:
-    """Sync findings to Notion and pull status updates back."""
+    """Sync control-plane databases, watchlists, and findings to Notion."""
     logger.info("notion_sync_starting")
     try:
-        # Push new findings to Notion
-        synced = await asyncio.wait_for(sync_findings_to_notion(), timeout=600)
-        logger.info("notion_push_complete", synced=synced)
-
-        # Pull status changes from Notion
-        updated = await asyncio.wait_for(pull_status_updates(), timeout=300)
-        logger.info("notion_pull_complete", updated=updated)
+        result = await asyncio.wait_for(run_full_notion_sync(), timeout=900)
+        logger.info("notion_sync_complete", **result)
 
     except asyncio.TimeoutError:
         logger.error("notion_sync_timeout", msg="Task exceeded timeout")

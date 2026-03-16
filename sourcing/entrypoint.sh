@@ -18,6 +18,15 @@ if [ -n "${TASK_MODE:-}" ]; then
         notion-export)
             python -m app.tasks.notion_export
             ;;
+        notion-control-plane)
+            python -m app.tasks.notion_control_plane
+            ;;
+        agent-jobs)
+            python -m app.tasks.agent_jobs
+            ;;
+        cadence-scan)
+            python -m app.tasks.cadence_scan
+            ;;
         *)
             echo "Unknown TASK_MODE: $TASK_MODE"
             exit 1

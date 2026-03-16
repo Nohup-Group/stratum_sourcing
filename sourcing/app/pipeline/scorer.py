@@ -50,6 +50,7 @@ EARLY_STAGE_KEYWORDS = [
 
 # Source authority scores (default 0.5)
 SOURCE_AUTHORITY: dict[str, float] = {
+    "company": 0.7,
     "person": 0.6,
     "association": 0.7,
     "newsletter": 0.5,

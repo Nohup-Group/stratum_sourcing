@@ -5,16 +5,16 @@ import sys
 
 import structlog
 
-from app.pipeline.orchestrator import run_scan
+from app.pipeline.orchestrator import run_due_scan
 
 logger = structlog.get_logger()
 
 
 async def run_nightly_scan() -> None:
-    """Execute the full nightly scan pipeline."""
+    """Execute the due-source scan pipeline."""
     logger.info("nightly_scan_starting")
     try:
-        run_id = await asyncio.wait_for(run_scan(), timeout=1800)
+        run_id = await asyncio.wait_for(run_due_scan(), timeout=1800)
         logger.info("nightly_scan_complete", run_id=run_id)
     except asyncio.TimeoutError:
         logger.error("nightly_scan_timeout", msg="Task exceeded 30min timeout")

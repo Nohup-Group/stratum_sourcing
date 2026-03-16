@@ -6,10 +6,10 @@ bounded concurrency, and stage-level tracking for observability.
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -20,28 +20,53 @@ from app.pipeline.deduplicator import clear_embedding_cache, is_duplicate, is_se
 from app.pipeline.differ import compute_diff
 from app.pipeline.scorer import score_finding
 from app.pipeline.tracker import PipelineTracker, ScanStage
+from app.services.job_queue import enqueue_event
+from app.services.source_pipeline import compute_next_ingest_at
 from app.sources.registry import close_all_fetchers, get_fetcher
 
 logger = structlog.get_logger()
 
 
-async def run_scan() -> int:
-    """Execute a full scan of all active sources.
+async def run_scan(
+    *,
+    due_only: bool = False,
+    cadence_bucket: str | None = None,
+    limit: int | None = None,
+) -> int:
+    """Execute a scan over active or due sources.
 
     Returns:
         The scan_run ID.
     """
+    now = datetime.now(timezone.utc)
     async with async_session_factory() as db:
         # Create scan run record
-        run = ScanRun(started_at=datetime.now(timezone.utc))
+        run = ScanRun(
+            started_at=now,
+            metadata_={
+                "mode": "due" if due_only else "full",
+                "cadence_bucket": cadence_bucket,
+                "limit": limit,
+            },
+        )
         db.add(run)
         await db.flush()
         run_id = run.id
 
-        # Load active sources
-        result = await db.execute(
-            select(Source).where(Source.is_active.is_(True))
-        )
+        stmt = select(Source).where(Source.is_active.is_(True))
+        if due_only:
+            stmt = stmt.where(
+                or_(Source.next_ingest_at.is_(None), Source.next_ingest_at <= now),
+                or_(Source.cooldown_until.is_(None), Source.cooldown_until <= now),
+                Source.onboarding_status.notin_(["paused", "error"]),
+            )
+        if cadence_bucket:
+            stmt = stmt.where(Source.cadence_bucket == cadence_bucket)
+        stmt = stmt.order_by(Source.next_ingest_at.asc().nullsfirst(), Source.id.asc())
+        if limit:
+            stmt = stmt.limit(limit)
+
+        result = await db.execute(stmt)
         sources = result.scalars().all()
         run.sources_total = len(sources)
         await db.commit()
@@ -105,6 +130,11 @@ async def run_scan() -> int:
     return run_id
 
 
+async def run_due_scan(cadence_bucket: str | None = None, limit: int | None = None) -> int:
+    """Execute a scan for due sources only."""
+    return await run_scan(due_only=True, cadence_bucket=cadence_bucket, limit=limit)
+
+
 async def _scan_single_source(source: Source, run_id: int) -> int:
     """Scan a single source: fetch → diff → analyze → score → dedup → store.
 
@@ -136,16 +166,27 @@ async def _scan_single_source(source: Source, run_id: int) -> int:
             fetched_at=result.fetched_at,
             fetch_duration_ms=result.duration_ms,
             error=result.error,
+            metadata_=result.metadata or {},
         )
         db.add(snapshot)
         await db.flush()
 
+        source_row = await db.get(Source, source.id)
+        assert source_row is not None
+
         if result.error:
             tracker.fail(ScanStage.FETCH, error=result.error)
+            source_row.onboarding_status = "error"
+            source_row.cooldown_until = datetime.now(timezone.utc) + timedelta(hours=6)
+            source_row.next_ingest_at = compute_next_ingest_at(source_row)
             await db.commit()
             return 0
 
         tracker.complete(ScanStage.FETCH, duration_ms=fetch_ms)
+        source_row.last_ingested_at = result.fetched_at
+        source_row.next_ingest_at = compute_next_ingest_at(source_row, from_time=result.fetched_at)
+        source_row.cooldown_until = None
+        source_row.onboarding_status = "active"
 
         # --- Stage: DIFF ---
         tracker.start(ScanStage.DIFF)
@@ -181,6 +222,7 @@ async def _scan_single_source(source: Source, run_id: int) -> int:
         t0 = time.monotonic()
         new_count = 0
         dupes = 0
+        finding_ids: list[int] = []
 
         for raw in raw_findings:
             # Score (applies vertical alignment, geographic, stage, authority weights)
@@ -208,10 +250,16 @@ async def _scan_single_source(source: Source, run_id: int) -> int:
                 category=scored.get("category"),
                 relevance_score=scored["relevance_score"],
                 vertical_tags=scored.get("vertical_tags", []),
+                metadata_={
+                    "published_date": scored.get("published_date"),
+                    "entities": scored.get("entities", []),
+                    "raw_relevance_score": raw.get("relevance_score"),
+                },
                 dedup_hash=scored["dedup_hash"],
             )
             db.add(finding)
             await db.flush()
+            finding_ids.append(finding.id)
 
             # Store evidence items
             for ev in scored.get("evidence", []):
@@ -224,6 +272,20 @@ async def _scan_single_source(source: Source, run_id: int) -> int:
                 db.add(evidence)
 
             new_count += 1
+
+        if finding_ids:
+            await enqueue_event(
+                db,
+                event_type="snapshot_ready",
+                payload={
+                    "run_id": run_id,
+                    "source_id": source.id,
+                    "snapshot_id": snapshot.id,
+                    "finding_ids": finding_ids,
+                },
+                dedup_key=f"snapshot_ready:{snapshot.id}",
+                source_id=source.id,
+            )
 
         await db.commit()
         store_ms = int((time.monotonic() - t0) * 1000)

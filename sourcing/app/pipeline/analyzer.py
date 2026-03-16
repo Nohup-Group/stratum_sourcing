@@ -78,6 +78,25 @@ If nothing noteworthy or everything is older than 7 days, return {{"findings": [
 # --- Per-category worker prompts (different instructions per source type) ---
 
 CATEGORY_PROMPTS: dict[str, str] = {
+    "company": """\
+You are analysing content from **{source_name}**, a company or protocol relevant to \
+institutional tokenisation, compliance, wallets, identity, or middleware.
+
+**What to extract:**
+- Product launches, roadmap updates, and new capabilities
+- Partnerships, customers, or integrations relevant to regulated digital assets
+- Hiring and leadership changes signalling expansion or focus
+- Regulatory approvals, sandbox participation, or compliance milestones
+- Funding, traction, or international expansion updates
+- Mentions of founders, executives, and ecosystem partners worth tracking as people sources
+
+**What to skip:** generic marketing copy, evergreen boilerplate, unrelated business lines.
+
+Source URL: {source_url}
+
+Content:
+{content}""",
+
     "person": """\
 You are analysing a post or activity update from **{source_name}**, a thought leader \
 in fintech/blockchain/DeFi.

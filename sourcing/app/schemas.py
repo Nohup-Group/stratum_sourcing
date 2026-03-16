@@ -16,6 +16,10 @@ class SourceBase(BaseModel):
     config: dict = {}
     verticals: list[str] = []
     description: str | None = None
+    notes: str | None = None
+    cadence_bucket: str = "daily"
+    discovery_mode: str = "manual"
+    onboarding_status: str = "new"
     is_active: bool = True
 
 
@@ -25,6 +29,9 @@ class SourceCreate(SourceBase):
 
 class SourceResponse(SourceBase):
     id: int
+    notion_page_id: str | None = None
+    next_ingest_at: datetime | None = None
+    last_ingested_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +77,34 @@ class FindingResponse(BaseModel):
     status: str
     created_at: datetime
     evidence_items: list[EvidenceResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class EntityResponse(BaseModel):
+    id: int
+    entity_type: str
+    display_name: str
+    canonical_url: str | None = None
+    description: str | None = None
+    thesis_tags: list[str] = []
+    source_count: int
+    finding_count: int
+    last_seen_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WatchTargetResponse(BaseModel):
+    id: int
+    entity_id: int
+    target_type: str
+    status: str
+    score: float
+    rank: int | None = None
+    notion_page_id: str | None = None
+    published_at: datetime | None = None
+    entity: EntityResponse
 
     model_config = {"from_attributes": True}
 

@@ -31,7 +31,21 @@ class Settings(BaseSettings):
 
     # --- Notion ---
     notion_api_key: str = Field(default="", alias="NOTION_API_KEY")
+    notion_api_version: str = Field(default="2026-03-11", alias="NOTION_API_VERSION")
     notion_ocean_database_id: str = Field(default="", alias="NOTION_OCEAN_DATABASE_ID")
+    notion_parent_page_id: str = Field(default="", alias="NOTION_PARENT_PAGE_ID")
+    notion_source_registry_database_id: str = Field(
+        default="", alias="NOTION_SOURCE_REGISTRY_DATABASE_ID"
+    )
+    notion_company_watchlist_database_id: str = Field(
+        default="", alias="NOTION_COMPANY_WATCHLIST_DATABASE_ID"
+    )
+    notion_people_watchlist_database_id: str = Field(
+        default="", alias="NOTION_PEOPLE_WATCHLIST_DATABASE_ID"
+    )
+    notion_webhook_verification_token: str = Field(
+        default="", alias="NOTION_WEBHOOK_VERIFICATION_TOKEN"
+    )
 
     # --- LLM ---
     # Option 1 (production): OpenClaw gateway with Codex OAuth
@@ -50,6 +64,8 @@ class Settings(BaseSettings):
 
     # --- Cron / Security ---
     cron_secret: str = Field(default="", alias="CRON_SECRET")
+    lexie_ops_url: str = Field(default="", alias="LEXIE_OPS_URL")
+    lexie_ops_token: str = Field(default="", alias="LEXIE_OPS_TOKEN")
 
     # --- Persistent volume ---
     data_dir: str = Field(default="/data", alias="DATA_DIR")
@@ -65,6 +81,12 @@ class Settings(BaseSettings):
     score_weight_stage: float = Field(default=0.15)
     score_weight_recency: float = Field(default=0.15)
     score_weight_authority: float = Field(default=0.15)
+
+    # --- Scheduler / auto-growth ---
+    auto_growth_daily_limit: int = Field(default=5, alias="AUTO_GROWTH_DAILY_LIMIT")
+    auto_growth_per_parent_limit: int = Field(default=2, alias="AUTO_GROWTH_PER_PARENT_LIMIT")
+    watchlist_company_threshold: float = Field(default=0.55, alias="WATCHLIST_COMPANY_THRESHOLD")
+    watchlist_people_threshold: float = Field(default=0.50, alias="WATCHLIST_PEOPLE_THRESHOLD")
 
 
 settings = Settings()
