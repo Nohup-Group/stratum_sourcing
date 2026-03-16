@@ -86,5 +86,6 @@ describe("useSessions", () => {
 
     expect(createSession).toHaveBeenCalledWith("New chat");
     await waitFor(() => expect(result.current.currentSessionId).toBe("session-2"));
+    expect(result.current.currentSession?.id).toBe("session-2");
   });
 });

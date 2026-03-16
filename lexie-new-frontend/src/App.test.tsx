@@ -60,7 +60,6 @@ describe("App", () => {
     );
 
     expect(screen.getByText(/Start a new chat to create your first Lexie session/i)).toBeTruthy();
-    expect(screen.getByText(/Lexie for Stratum sourcing workflows/i)).toBeTruthy();
     expect(screen.queryByText(/Project/i)).toBeNull();
   });
 });

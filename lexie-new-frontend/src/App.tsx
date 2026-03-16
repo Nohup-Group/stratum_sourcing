@@ -43,7 +43,6 @@ export default function App() {
           currentSessionId={currentSessionId}
           onSelectSession={selectSession}
           onNewSession={() => {
-            selectSession(null);
             void createSession();
           }}
           onDeleteSession={deleteSession}

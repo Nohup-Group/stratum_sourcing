@@ -74,10 +74,24 @@ export function useSessions() {
     ]);
   }, [queryClient]);
 
+  const prependSession = useCallback((status: SessionStatus, created: Session) => {
+    queryClient.setQueryData<Session[]>(["sessions", status], (current) => {
+      const next = current ?? [];
+      return [created, ...next.filter((session) => session.id !== created.id)];
+    });
+  }, [queryClient]);
+
+  const removeSessionFromStatus = useCallback((status: SessionStatus, sessionId: string) => {
+    queryClient.setQueryData<Session[]>(["sessions", status], (current) =>
+      (current ?? []).filter((session) => session.id !== sessionId),
+    );
+  }, [queryClient]);
+
   const createMutation = useMutation({
     mutationFn: (name: string) => apiCreateSession(name),
     onSuccess: async (created) => {
       setCurrentSessionId(created.id);
+      prependSession("ACTIVE", created);
       await refreshSessions();
     },
   });
@@ -90,6 +104,7 @@ export function useSessions() {
     onSuccess: async (_updated, params) => {
       if (params.data.status === "ARCHIVED" && currentSessionId === params.sessionId) {
         setCurrentSessionId(null);
+        removeSessionFromStatus("ACTIVE", params.sessionId);
       }
       await refreshSessions();
     },
@@ -101,6 +116,8 @@ export function useSessions() {
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
       }
+      removeSessionFromStatus("ACTIVE", sessionId);
+      removeSessionFromStatus("ARCHIVED", sessionId);
       await refreshSessions();
     },
   });

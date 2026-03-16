@@ -26,76 +26,76 @@ interface ToolMeta {
 const TOOL_MAP: Record<string, ToolMeta> = {
   // Claude Code tools (come as lowercase from OpenClaw)
   read: {
-    label: "Dokument",
-    runningLabel: "Dokument wird gelesen",
-    doneLabel: "Dokument gelesen",
+    label: "Document",
+    runningLabel: "Reading document",
+    doneLabel: "Document read",
     icon: FileTextIcon,
   },
-  write: { label: "Datei erstellen", icon: FileTextIcon },
-  edit: { label: "Datei bearbeiten", icon: FileTextIcon },
-  glob: { label: "Dateien suchen", icon: FolderTreeIcon },
-  grep: { label: "Inhalt durchsuchen", icon: SearchIcon },
+  write: { label: "Create file", icon: FileTextIcon },
+  edit: { label: "Edit file", icon: FileTextIcon },
+  glob: { label: "Find files", icon: FolderTreeIcon },
+  grep: { label: "Search content", icon: SearchIcon },
   bash: {
-    label: "Befehl",
-    runningLabel: "Befehl wird ausgeführt",
-    doneLabel: "Befehl ausgeführt",
+    label: "Command",
+    runningLabel: "Running command",
+    doneLabel: "Command finished",
     icon: TerminalIcon,
   },
   exec: {
-    label: "Befehl",
-    runningLabel: "Befehl wird ausgeführt",
-    doneLabel: "Befehl ausgeführt",
+    label: "Command",
+    runningLabel: "Running command",
+    doneLabel: "Command finished",
     icon: TerminalIcon,
   },
   exec_command: {
-    label: "Befehl",
-    runningLabel: "Befehl wird ausgeführt",
-    doneLabel: "Befehl ausgeführt",
+    label: "Command",
+    runningLabel: "Running command",
+    doneLabel: "Command finished",
     icon: TerminalIcon,
   },
   "functions.exec_command": {
-    label: "Befehl",
-    runningLabel: "Befehl wird ausgeführt",
-    doneLabel: "Befehl ausgeführt",
+    label: "Command",
+    runningLabel: "Running command",
+    doneLabel: "Command finished",
     icon: TerminalIcon,
   },
   write_stdin: {
-    label: "Befehl",
-    runningLabel: "Befehl läuft weiter",
-    doneLabel: "Befehl abgeschlossen",
+    label: "Command",
+    runningLabel: "Command still running",
+    doneLabel: "Command completed",
     icon: TerminalIcon,
   },
   "functions.write_stdin": {
-    label: "Befehl",
-    runningLabel: "Befehl läuft weiter",
-    doneLabel: "Befehl abgeschlossen",
+    label: "Command",
+    runningLabel: "Command still running",
+    doneLabel: "Command completed",
     icon: TerminalIcon,
   },
-  agent: { label: "Recherche", icon: SearchIcon },
-  todowrite: { label: "Aufgaben planen", icon: FileTextIcon },
-  webfetch: { label: "Webseite abrufen", icon: GlobeIcon },
-  websearch: { label: "Web-Suche", icon: GlobeIcon },
+  agent: { label: "Research", icon: SearchIcon },
+  todowrite: { label: "Plan work", icon: FileTextIcon },
+  webfetch: { label: "Fetch page", icon: GlobeIcon },
+  websearch: { label: "Web search", icon: GlobeIcon },
   search_query: {
-    label: "Web-Suche",
-    runningLabel: "Web wird durchsucht",
-    doneLabel: "Web-Suche abgeschlossen",
+    label: "Web search",
+    runningLabel: "Searching the web",
+    doneLabel: "Web search completed",
     icon: GlobeIcon,
   },
   image_query: {
-    label: "Bildersuche",
-    runningLabel: "Bilder werden gesucht",
-    doneLabel: "Bildersuche abgeschlossen",
+    label: "Image search",
+    runningLabel: "Searching images",
+    doneLabel: "Image search completed",
     icon: GlobeIcon,
   },
-  open: { label: "Seite öffnen", icon: GlobeIcon },
-  click: { label: "Link öffnen", icon: GlobeIcon },
-  find: { label: "Seite prüfen", icon: SearchIcon },
-  list_mcp_resources: { label: "Quelle prüfen", icon: FolderTreeIcon },
-  "functions.list_mcp_resources": { label: "Quelle prüfen", icon: FolderTreeIcon },
-  read_mcp_resource: { label: "Referenz laden", icon: FileTextIcon },
-  "functions.read_mcp_resource": { label: "Referenz laden", icon: FileTextIcon },
-  update_plan: { label: "Arbeit strukturieren", icon: FileTextIcon },
-  "functions.update_plan": { label: "Arbeit strukturieren", icon: FileTextIcon },
+  open: { label: "Open page", icon: GlobeIcon },
+  click: { label: "Open link", icon: GlobeIcon },
+  find: { label: "Inspect page", icon: SearchIcon },
+  list_mcp_resources: { label: "Check source", icon: FolderTreeIcon },
+  "functions.list_mcp_resources": { label: "Check source", icon: FolderTreeIcon },
+  read_mcp_resource: { label: "Load reference", icon: FileTextIcon },
+  "functions.read_mcp_resource": { label: "Load reference", icon: FileTextIcon },
+  update_plan: { label: "Structure work", icon: FileTextIcon },
+  "functions.update_plan": { label: "Structure work", icon: FileTextIcon },
 };
 
 function getArgsRecord(args: unknown): Record<string, unknown> | null {
@@ -134,7 +134,7 @@ function getSharePointUploadDetail(args: unknown): string | null {
   }
 
   const match = command.match(/\bupload\s+["']?([^"'\s]+)/i);
-  return match?.[1] ? basename(match[1]) : "Datei wird hochgeladen";
+  return match?.[1] ? basename(match[1]) : "Uploading file";
 }
 
 function isSharePointUpload(toolName: string, args: unknown): boolean {
@@ -148,9 +148,9 @@ function isSharePointUpload(toolName: string, args: unknown): boolean {
 function getToolMeta(toolName: string, args: unknown): ToolMeta {
   if (isSharePointUpload(toolName, args)) {
     return {
-      label: "SharePoint-Upload",
-      runningLabel: "Datei wird zu SharePoint hochgeladen",
-      doneLabel: "SharePoint-Upload abgeschlossen",
+      label: "SharePoint upload",
+      runningLabel: "Uploading file to SharePoint",
+      doneLabel: "SharePoint upload completed",
       icon: FolderTreeIcon,
     };
   }
