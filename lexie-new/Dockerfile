@@ -65,7 +65,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY server.js session-store.js entrypoint.sh README.md railway.toml ./
+COPY server.js ops-gateway.js session-store.js entrypoint.sh README.md railway.toml ./
 COPY scripts/ /app/scripts/
 COPY workspace/ /app/workspace/
 
