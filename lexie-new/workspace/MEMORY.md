@@ -17,6 +17,7 @@
   - Hanna Raftell
   - Johan Toll
   - Sören Zimmer
+  - Lukas Schmidt
 
 ## Lexie identity
 

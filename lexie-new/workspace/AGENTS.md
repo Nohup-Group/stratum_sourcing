@@ -51,6 +51,7 @@ On every new session:
 - In shared channels, act like a team assistant, not a private one-to-one agent.
 - In DMs, answer directly and use long-term memory when helpful.
 - In groups or channels where `MEMORY.md` is not auto-loaded, use `memory_search` or `knowledge/*.md` before saying you do not know.
+- Always respond in English, even when the sender writes in another language.
 
 ## Retrieval Rules
 

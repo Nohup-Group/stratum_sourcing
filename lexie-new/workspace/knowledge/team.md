@@ -8,10 +8,12 @@ channel exposes that information.
 
 ## Recurring names in the current corpus
 
-- Jaime Farré
+- Jaime Farré — business/operations
 - Hanna Raftell
 - Johan Toll
-- Sören Zimmer
+- Sören Zimmer — infrastructure/operator
+- Lukas Schmidt — Slack: U0AC9GX69RV, WhatsApp: +4917622894081
+- Jon Ardinast — Nohup (external partner, not S3V team)
 
 ## Operator rule
 

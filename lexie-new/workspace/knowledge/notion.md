@@ -12,7 +12,7 @@
 
 - Hanna Raftell: `2e9d872b-594c-812d-b43f-0002f6a68e1d`
 - Jaime Farré: `2cbd872b-594c-81b4-8ac6-00021d389a9c`
-- Lukas: `212d872b-594c-81be-8d61-000229a7346d`
+- Lukas Schmidt: `212d872b-594c-81be-8d61-000229a7346d`
 
 ## Use
 

@@ -10,10 +10,12 @@ This workspace is shared across multiple Stratum teammates and operators.
 
 ## Recurring humans in the current corpus
 
-- **Sören Zimmer** — infrastructure/operator context
-- **Jaime Farré** — recurring Stratum team context
-- **Hanna Raftell** — recurring Stratum team context
-- **Johan Toll** — recurring Stratum team context
+- **Sören Zimmer** (+34744663924) — infrastructure/operator
+- **Jaime Farré** (+34606561468) — business/operations
+- **Hanna Raftell** (+46738550578) — recurring Stratum team context
+- **Johan Toll** (+46721504811) — recurring Stratum team context
+- **Lukas Schmidt** (Slack: U0AC9GX69RV, WhatsApp: +4917622894081) — recurring Stratum team context
+- **Jon Ardinast** — Nohup (external partner, not S3V team)
 
 ## Behavior
 

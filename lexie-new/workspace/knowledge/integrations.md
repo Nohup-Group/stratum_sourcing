@@ -11,6 +11,11 @@
 - Slack is enabled and channel access is restricted by allowlist.
 - WhatsApp is enabled and should keep separate DM sessions per peer.
 - Telegram is enabled.
+- Known WhatsApp groups:
+  - "Core Team S3V" — internal S3V team group
+  - "Stratum x Nohup" — cross-team group between S3V and Nohup
+- Voice memos are sent via WhatsApp. Lexie processes audio messages and responds
+  to their content. Whisper transcription handles audio-to-text.
 
 ## Retrieval notes
 
