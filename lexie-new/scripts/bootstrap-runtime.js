@@ -153,6 +153,8 @@ async function patchOpenClawConfig() {
   memorySearch.model = "text-embedding-3-small";
   memorySearch.sources = ["memory", "sessions"];
   experimental.sessionMemory = true;
+  // Remove stale local embedding fallback so Railway stays purely on OpenAI.
+  delete memorySearch.local;
   vectorStore.enabled = true;
   remoteBatch.enabled = true;
   remoteBatch.wait = true;

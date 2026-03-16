@@ -7,10 +7,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "lint": "node --check server.js && node --check session-store.js",
+    "lint": "node --check server.js && node --check session-store.js && node --check ops-gateway.js",
     "test": "node --test"
   },
   "dependencies": {
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
   }
 }

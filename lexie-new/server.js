@@ -2,6 +2,7 @@ const http = require("http");
 const net = require("net");
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
+const { runOpsPrompt } = require("./ops-gateway");
 const {
   DEFAULT_AGENT_ID,
   DEFAULT_SESSION_NAME,
@@ -29,7 +30,12 @@ const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
 const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const LEXIE_OPS_TOKEN = process.env.LEXIE_OPS_TOKEN || "";
 const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
+const GATEWAY_STOP_TIMEOUT_MS = parseInteger(
+  process.env.GATEWAY_STOP_TIMEOUT_MS || "15000",
+  15000,
+);
 
 let shuttingDown = false;
 let gatewayProcess = null;
@@ -39,6 +45,7 @@ let sessionStoreReady = false;
 let sessionStoreError = DATABASE_URL
   ? null
   : new Error("DATABASE_URL is required for the session API");
+let shutdownPromise = null;
 
 const pool = DATABASE_URL ? new Pool(createPgPoolConfig(DATABASE_URL)) : null;
 
@@ -93,6 +100,81 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createGatewayEnv() {
+  const { OPENCLAW_GATEWAY_TOKEN: _ignoredGatewayToken, ...gatewayEnv } = process.env;
+  return {
+    ...gatewayEnv,
+    HOME: OPENCLAW_HOME,
+    OPENCLAW_HOME,
+    OPENCLAW_STATE_DIR,
+    OPENCLAW_WORKSPACE_DIR,
+  };
+}
+
+function runOpenClawCommand(args, { timeoutMs = GATEWAY_STOP_TIMEOUT_MS } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("openclaw", args, {
+      env: createGatewayEnv(),
+      stdio: "inherit",
+    });
+
+    let settled = false;
+    const finish = (callback) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      callback();
+    };
+
+    const timeout = setTimeout(() => {
+      if (!child.killed) {
+        child.kill("SIGTERM");
+      }
+      finish(() => {
+        reject(
+          new Error(
+            `openclaw ${args.join(" ")} timed out after ${timeoutMs}ms`,
+          ),
+        );
+      });
+    }, timeoutMs);
+
+    child.on("error", (error) => {
+      finish(() => reject(error));
+    });
+
+    child.on("exit", (code, signal) => {
+      finish(() => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            `openclaw ${args.join(" ")} exited with code=${code} signal=${signal}`,
+          ),
+        );
+      });
+    });
+  });
+}
+
+async function stopGateway(reason, { tolerateFailure = false } = {}) {
+  log(`stopping openclaw gateway (${reason})`);
+  try {
+    await runOpenClawCommand(["gateway", "stop"]);
+  } catch (error) {
+    if (!tolerateFailure) {
+      throw error;
+    }
+    logError(
+      `best-effort gateway stop failed (${reason}): ${error.stack || error.message}`,
+    );
+  }
+}
+
 async function probeGateway(timeoutMs = 60000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -135,6 +217,7 @@ async function startGateway() {
   }
 
   gatewayReady = false;
+  await stopGateway("pre-start cleanup", { tolerateFailure: true });
 
   const args = [
     "gateway",
@@ -149,15 +232,8 @@ async function startGateway() {
   log(
     `starting openclaw gateway on ${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`,
   );
-  const { OPENCLAW_GATEWAY_TOKEN: _ignoredGatewayToken, ...gatewayEnv } = process.env;
   gatewayProcess = spawn("openclaw", args, {
-    env: {
-      ...gatewayEnv,
-      HOME: OPENCLAW_HOME,
-      OPENCLAW_HOME,
-      OPENCLAW_STATE_DIR,
-      OPENCLAW_WORKSPACE_DIR,
-    },
+    env: createGatewayEnv(),
     stdio: "inherit",
   });
 
@@ -325,6 +401,20 @@ function sendApiError(response, statusCode, message) {
   sendJson(response, statusCode, { error: message });
 }
 
+function verifyOpsToken(request) {
+  if (!LEXIE_OPS_TOKEN) {
+    return { ok: false, statusCode: 503, message: "LEXIE_OPS_TOKEN is not configured" };
+  }
+
+  const header = request.headers.authorization || "";
+  const expected = `Bearer ${LEXIE_OPS_TOKEN}`;
+  if (header !== expected) {
+    return { ok: false, statusCode: 403, message: "Invalid ops token" };
+  }
+
+  return { ok: true };
+}
+
 async function readJsonBody(request) {
   const chunks = [];
   let totalLength = 0;
@@ -404,6 +494,52 @@ async function handleApiRequest(request, response) {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/agent/chat-capabilities") {
     sendJson(response, 200, buildChatCapabilities());
+    return true;
+  }
+
+  if (requestUrl.pathname === "/api/ops/agent-jobs") {
+    if (request.method !== "POST") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+
+    const auth = verifyOpsToken(request);
+    if (!auth.ok) {
+      sendApiError(response, auth.statusCode, auth.message);
+      return true;
+    }
+
+    if (!gatewayReady) {
+      sendApiError(response, 503, "Gateway not ready");
+      return true;
+    }
+
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      sendApiError(response, 400, error.message || "Invalid JSON body");
+      return true;
+    }
+
+    const agent = String(body.agent || "ops-agent").trim();
+    const systemPrompt = String(body.systemPrompt || "").trim();
+    const userPrompt = String(body.userPrompt || "").trim();
+    const timeoutMs = parseInteger(body.timeoutMs, 120000);
+    if (!userPrompt) {
+      sendApiError(response, 400, "userPrompt is required");
+      return true;
+    }
+
+    const outputText = await runOpsPrompt({
+      host: INTERNAL_GATEWAY_HOST,
+      port: INTERNAL_GATEWAY_PORT,
+      agent,
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+    });
+    sendJson(response, 200, { agent, outputText });
     return true;
   }
 
@@ -600,7 +736,11 @@ server.listen(PORT, LISTEN_HOST, () => {
   });
 });
 
-function shutdown(signal) {
+async function shutdown(signal) {
+  if (shutdownPromise) {
+    return shutdownPromise;
+  }
+
   log(`received ${signal}, shutting down`);
   shuttingDown = true;
   gatewayReady = false;
@@ -610,21 +750,36 @@ function shutdown(signal) {
     restartTimer = null;
   }
 
-  server.close(() => {
+  shutdownPromise = (async () => {
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+
     if (pool) {
-      void pool.end().catch((error) => {
+      try {
+        await pool.end();
+      } catch (error) {
         logError(`session store shutdown failed: ${error.stack || error.message}`);
-      });
+      }
     }
 
     if (gatewayProcess) {
-      gatewayProcess.once("exit", () => process.exit(0));
-      gatewayProcess.kill(signal);
-      return;
+      await new Promise((resolve) => {
+        gatewayProcess.once("exit", resolve);
+        gatewayProcess.kill(signal);
+      });
     }
+
+    await stopGateway(`shutdown ${signal}`, { tolerateFailure: true });
     process.exit(0);
-  });
+  })();
+
+  return shutdownPromise;
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
