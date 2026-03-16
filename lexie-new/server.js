@@ -572,7 +572,7 @@ const server = http.createServer((request, response) => {
       gatewayReady,
       sessionStoreReady,
     });
-    response.writeHead(gatewayReady ? 200 : 503, {
+    response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
     });

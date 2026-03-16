@@ -168,14 +168,14 @@ export default function Sidebar({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <img
-              src="/logo-lockup-light.svg"
+              src="/logo-lockup-light.png"
               alt="Stratum"
-              className="h-12 w-auto dark:hidden"
+              className="block h-auto w-[13.5rem] max-w-full object-contain object-left dark:hidden"
             />
             <img
-              src="/logo-lockup-dark.svg"
+              src="/logo-lockup-dark.png"
               alt="Stratum"
-              className="hidden h-12 w-auto dark:block"
+              className="hidden h-auto w-[13.5rem] max-w-full object-contain object-left dark:block"
             />
             <p className="mt-3 max-w-[16rem] text-xs leading-5 text-muted-foreground">
               Lexie for Stratum sourcing workflows. Sessions stay scoped to this browser.
