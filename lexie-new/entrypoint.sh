@@ -8,9 +8,10 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${DATA_ROOT}/.config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-${DATA_ROOT}/.local/share}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${DATA_ROOT}/.cache}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/lexie-runtime}"
-export HOME="${HOME:-${DATA_ROOT}}"
+export HOME="${DATA_ROOT}"
 export INTERNAL_GATEWAY_HOST="${INTERNAL_GATEWAY_HOST:-127.0.0.1}"
 export INTERNAL_GATEWAY_PORT="${INTERNAL_GATEWAY_PORT:-18789}"
+umask 077
 
 mkdir -p \
   "${OPENCLAW_STATE_DIR}" \
@@ -25,17 +26,25 @@ mkdir -p \
   "${XDG_RUNTIME_DIR}" \
   "${XDG_RUNTIME_DIR}/keyring"
 
-chmod 700 "${DATA_ROOT}" "${OPENCLAW_STATE_DIR}" "${OPENCLAW_WORKSPACE_DIR}" "${XDG_RUNTIME_DIR}" || true
+mkdir -p /root/.openclaw
+rm -rf /root/.openclaw/workspace
+ln -s "${OPENCLAW_WORKSPACE_DIR}" /root/.openclaw/workspace
+
+chmod 700 \
+  "${DATA_ROOT}" \
+  "${OPENCLAW_STATE_DIR}" \
+  "${OPENCLAW_WORKSPACE_DIR}" \
+  "${XDG_RUNTIME_DIR}" \
+  "${XDG_RUNTIME_DIR}/keyring" || true
 
 dbus_output="$(dbus-daemon --session --fork --print-address=1 --print-pid=1)"
 export DBUS_SESSION_BUS_ADDRESS="$(printf '%s\n' "${dbus_output}" | sed -n '1p')"
 export DBUS_SESSION_BUS_PID="$(printf '%s\n' "${dbus_output}" | sed -n '2p')"
 
-keyring_cmd=(gnome-keyring-daemon --start --components=secrets --control-directory="${XDG_RUNTIME_DIR}/keyring")
 if [[ -n "${GOG_KEYRING_PASSWORD:-}" ]]; then
-  keyring_output="$(printf '%s' "${GOG_KEYRING_PASSWORD}" | "${keyring_cmd[@]}" --unlock)"
+  keyring_output="$(printf '%s' "${GOG_KEYRING_PASSWORD}" | gnome-keyring-daemon --unlock --components=secrets --control-directory="${XDG_RUNTIME_DIR}/keyring")"
 else
-  keyring_output="$("${keyring_cmd[@]}")"
+  keyring_output="$(gnome-keyring-daemon --start --components=secrets --control-directory="${XDG_RUNTIME_DIR}/keyring")"
 fi
 eval "${keyring_output}"
 export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
