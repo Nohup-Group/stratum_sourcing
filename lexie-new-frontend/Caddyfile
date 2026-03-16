@@ -1,0 +1,27 @@
+:8080 {
+	handle /healthz {
+		header Content-Type "application/json"
+		header Cache-Control "no-store"
+		respond `{"status":"ok"}` 200
+	}
+
+	@openclaw_ws {
+		path /api/openclaw/ws
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @openclaw_ws {
+		rewrite * /
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080}
+	}
+
+	handle /api/* {
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

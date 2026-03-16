@@ -1,6 +1,22 @@
 const http = require("http");
 const net = require("net");
 const { spawn, spawnSync } = require("child_process");
+const { Pool } = require("pg");
+const {
+  DEFAULT_AGENT_ID,
+  DEFAULT_SESSION_NAME,
+  SESSION_STATUS,
+  createSession,
+  deleteSession,
+  detectWebSearchProvider,
+  ensureChatSessionsTable,
+  listSessions,
+  normalizeClientId,
+  normalizeSessionStatus,
+  splitAllowedOrigins,
+  touchSession,
+  updateSession,
+} = require("./session-store");
 
 const PORT = parseInteger(process.env.PORT, 8080);
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST || "127.0.0.1";
@@ -13,6 +29,8 @@ const OPENCLAW_HOME = process.env.OPENCLAW_HOME || "/data";
 const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
+const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
+const DATABASE_URL = process.env.DATABASE_URL || "";
 
 if (!OPENCLAW_GATEWAY_TOKEN) {
   throw new Error("OPENCLAW_GATEWAY_TOKEN is required");
@@ -22,10 +40,32 @@ let shuttingDown = false;
 let gatewayProcess = null;
 let gatewayReady = false;
 let restartTimer = null;
+let sessionStoreReady = false;
+let sessionStoreError = DATABASE_URL
+  ? null
+  : new Error("DATABASE_URL is required for the session API");
+
+const pool = DATABASE_URL ? new Pool(createPgPoolConfig(DATABASE_URL)) : null;
 
 function parseInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function createPgPoolConfig(connectionString) {
+  let sslMode = process.env.PGSSLMODE || "";
+  try {
+    const url = new URL(connectionString);
+    sslMode = url.searchParams.get("sslmode") || sslMode;
+  } catch {
+    // Let pg raise malformed URL errors later.
+  }
+
+  const needsSsl = /require|verify-ca|verify-full/i.test(sslMode);
+  return {
+    connectionString,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  };
 }
 
 function log(message) {
@@ -59,24 +99,46 @@ function syncGatewayConfig() {
     logError(`failed to sync gateway token: ${tokenResult.stderr.trim()}`);
   }
 
+  const origins = new Set(splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS));
   const publicDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
-  if (!publicDomain) {
+  if (publicDomain) {
+    origins.add(`https://${publicDomain}`);
+  }
+
+  if (origins.size === 0) {
     return;
   }
 
-  const origin = `https://${publicDomain}`;
   const originResult = runOpenClaw(
     [
       "config",
       "set",
       "--json",
       "gateway.controlUi.allowedOrigins",
-      JSON.stringify([origin]),
+      JSON.stringify(Array.from(origins)),
     ],
     { stdio: "pipe" },
   );
   if (originResult.status !== 0) {
     logError(`failed to sync allowed origins: ${originResult.stderr.trim()}`);
+  }
+}
+
+async function ensureSessionStore() {
+  if (!pool) {
+    sessionStoreReady = false;
+    return;
+  }
+
+  try {
+    await ensureChatSessionsTable(pool);
+    sessionStoreReady = true;
+    sessionStoreError = null;
+    log("session store ready");
+  } catch (error) {
+    sessionStoreReady = false;
+    sessionStoreError = error;
+    logError(`session store bootstrap failed: ${error.stack || error.message}`);
   }
 }
 
@@ -148,6 +210,7 @@ async function startGateway() {
   gatewayProcess = spawn("openclaw", args, {
     env: {
       ...process.env,
+      HOME: OPENCLAW_HOME,
       OPENCLAW_HOME,
       OPENCLAW_STATE_DIR,
       OPENCLAW_WORKSPACE_DIR,
@@ -256,11 +319,258 @@ function proxyUpgradeRequest(request, socket, head) {
   });
 }
 
+function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  response.end(JSON.stringify(payload));
+}
+
+function sendApiError(response, statusCode, message) {
+  sendJson(response, statusCode, { error: message });
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  let totalLength = 0;
+
+  for await (const chunk of request) {
+    totalLength += chunk.length;
+    if (totalLength > 1024 * 1024) {
+      throw new Error("Request body too large");
+    }
+    chunks.push(chunk);
+  }
+
+  if (chunks.length === 0) {
+    return {};
+  }
+
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) {
+    return {};
+  }
+
+  return JSON.parse(raw);
+}
+
+function resolveClientId(request) {
+  return normalizeClientId(request.headers["x-lexie-client-id"]);
+}
+
+async function getSessionPool(response) {
+  if (!pool) {
+    sendApiError(response, 500, "DATABASE_URL is not configured");
+    return null;
+  }
+
+  if (!sessionStoreReady) {
+    await ensureSessionStore();
+  }
+
+  if (!sessionStoreReady) {
+    sendApiError(
+      response,
+      503,
+      sessionStoreError?.message || "Session store is not ready",
+    );
+    return null;
+  }
+
+  return pool;
+}
+
+function buildChatCapabilities() {
+  const webSearchProvider = detectWebSearchProvider(process.env);
+  const webSearchAvailable = Boolean(webSearchProvider);
+
+  return {
+    gatewayReady,
+    gatewayReason: gatewayReady ? null : "gateway_starting",
+    chatModelId: process.env.OPENCLAW_CHAT_MODEL || null,
+    sandbox: {
+      enabled: true,
+      type: "remote",
+    },
+    webSearch: {
+      available: webSearchAvailable,
+      provider: webSearchProvider,
+      reason: webSearchAvailable ? null : "missing_web_search_provider_key",
+    },
+    pricing: {
+      configured: false,
+      model: null,
+    },
+  };
+}
+
+async function handleApiRequest(request, response) {
+  const requestUrl = new URL(request.url, "http://127.0.0.1");
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/agent/chat-capabilities") {
+    sendJson(response, 200, buildChatCapabilities());
+    return true;
+  }
+
+  if (requestUrl.pathname === "/api/sessions") {
+    const clientId = resolveClientId(request);
+    if (!clientId) {
+      sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
+      return true;
+    }
+
+    const sessionPool = await getSessionPool(response);
+    if (!sessionPool) {
+      return true;
+    }
+
+    if (request.method === "GET") {
+      const status = normalizeSessionStatus(
+        requestUrl.searchParams.get("status"),
+        SESSION_STATUS.ACTIVE,
+      );
+      if (!status) {
+        sendApiError(response, 400, "Invalid session status");
+        return true;
+      }
+
+      const sessions = await listSessions(sessionPool, { clientId, status });
+      sendJson(response, 200, sessions);
+      return true;
+    }
+
+    if (request.method === "POST") {
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        sendApiError(response, 400, error.message || "Invalid JSON body");
+        return true;
+      }
+
+      const created = await createSession(sessionPool, {
+        clientId,
+        name: body.name || DEFAULT_SESSION_NAME,
+        agentId: OPENCLAW_AGENT_ID,
+      });
+      sendJson(response, 201, created);
+      return true;
+    }
+
+    sendApiError(response, 405, "Method not allowed");
+    return true;
+  }
+
+  const touchMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/touch$/);
+  if (touchMatch) {
+    if (request.method !== "POST") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+
+    const clientId = resolveClientId(request);
+    if (!clientId) {
+      sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
+      return true;
+    }
+
+    const sessionPool = await getSessionPool(response);
+    if (!sessionPool) {
+      return true;
+    }
+
+    const touched = await touchSession(sessionPool, {
+      sessionId: touchMatch[1],
+      clientId,
+    });
+    if (!touched) {
+      sendApiError(response, 404, "Session not found");
+      return true;
+    }
+
+    sendJson(response, 200, touched);
+    return true;
+  }
+
+  const sessionMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+  if (sessionMatch) {
+    const clientId = resolveClientId(request);
+    if (!clientId) {
+      sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
+      return true;
+    }
+
+    const sessionPool = await getSessionPool(response);
+    if (!sessionPool) {
+      return true;
+    }
+
+    if (request.method === "PATCH") {
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        sendApiError(response, 400, error.message || "Invalid JSON body");
+        return true;
+      }
+
+      const status =
+        body.status === undefined
+          ? undefined
+          : normalizeSessionStatus(body.status);
+      if (body.status !== undefined && !status) {
+        sendApiError(response, 400, "Invalid session status");
+        return true;
+      }
+
+      const updated = await updateSession(sessionPool, {
+        sessionId: sessionMatch[1],
+        clientId,
+        name: body.name,
+        status,
+      });
+      if (!updated) {
+        sendApiError(response, 404, "Session not found");
+        return true;
+      }
+
+      sendJson(response, 200, updated);
+      return true;
+    }
+
+    if (request.method === "DELETE") {
+      const deleted = await deleteSession(sessionPool, {
+        sessionId: sessionMatch[1],
+        clientId,
+      });
+      if (!deleted) {
+        sendApiError(response, 404, "Session not found");
+        return true;
+      }
+
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+
+    sendApiError(response, 405, "Method not allowed");
+    return true;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/")) {
+    sendApiError(response, 404, "Not found");
+    return true;
+  }
+
+  return false;
+}
+
 const server = http.createServer((request, response) => {
   if (request.url === "/healthz") {
     const payload = JSON.stringify({
       status: gatewayReady ? "ok" : "starting",
       gatewayReady,
+      sessionStoreReady,
     });
     response.writeHead(gatewayReady ? 200 : 503, {
       "content-type": "application/json; charset=utf-8",
@@ -270,13 +580,27 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  proxyHttpRequest(request, response);
+  Promise.resolve(handleApiRequest(request, response))
+    .then((handled) => {
+      if (!handled) {
+        proxyHttpRequest(request, response);
+      }
+    })
+    .catch((error) => {
+      logError(`request handling failed: ${error.stack || error.message}`);
+      if (!response.headersSent) {
+        sendApiError(response, 500, "Internal server error");
+      } else {
+        response.end();
+      }
+    });
 });
 
 server.on("upgrade", proxyUpgradeRequest);
 
 server.listen(PORT, () => {
   log(`wrapper listening on ${PORT}`);
+  void ensureSessionStore();
   startGateway().catch((error) => {
     logError(`gateway start failed: ${error.stack || error.message}`);
   });
@@ -293,6 +617,12 @@ function shutdown(signal) {
   }
 
   server.close(() => {
+    if (pool) {
+      void pool.end().catch((error) => {
+        logError(`session store shutdown failed: ${error.stack || error.message}`);
+      });
+    }
+
     if (gatewayProcess) {
       gatewayProcess.once("exit", () => process.exit(0));
       gatewayProcess.kill(signal);
