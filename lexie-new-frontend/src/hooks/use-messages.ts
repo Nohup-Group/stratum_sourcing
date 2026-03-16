@@ -99,13 +99,13 @@ function toRuntimeAttachments(
 const CONNECTION_STATUS_MESSAGE =
   "Connection interrupted. Reconnecting automatically.";
 const GATEWAY_STARTING_MESSAGE =
-  "Der Agent startet noch. Bitte in ein paar Sekunden erneut versuchen.";
+  "The agent is still starting. Try again in a few seconds.";
 const OVERLOAD_REQUEST_MESSAGE =
-  "Der KI-Dienst ist derzeit überlastet. Bitte gleich erneut versuchen.";
+  "The AI service is overloaded right now. Please try again shortly.";
 const OVERLOAD_RECOVERY_MESSAGE =
-  "Azure braucht gerade länger als üblich. Es wird automatisch weiter versucht.";
+  "Azure is taking longer than usual right now. Retrying automatically.";
 const WEB_SEARCH_UNAVAILABLE_MESSAGE =
-  "Web-Recherche ist derzeit nicht konfiguriert.";
+  "Web search is not configured right now.";
 const REQUEST_ERROR_MESSAGE =
   "The request could not be completed right now.";
 

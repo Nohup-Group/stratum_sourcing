@@ -1,4 +1,5 @@
 import type { OpenClawQueueMode, OpenClawVerboseLevel } from "./types";
+import { getBrowserClientId } from "./browser-client";
 
 const GATEWAY_PROTOCOL_VERSION = 3;
 const GATEWAY_CLIENT_ID = "openclaw-control-ui";
@@ -54,6 +55,7 @@ type StatusListener = (connected: boolean) => void;
 function gatewayWsUrl(path = DEFAULT_GATEWAY_WS_PATH): string {
   const url = new URL(path, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("client_id", getBrowserClientId());
   return url.toString();
 }
 

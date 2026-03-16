@@ -205,6 +205,10 @@ function proxyHttpRequest(clientRequest, clientResponse) {
   forwardedHeaders["x-forwarded-for"] = clientRequest.socket.remoteAddress || "";
   forwardedHeaders["x-forwarded-host"] = clientRequest.headers.host || "";
   forwardedHeaders["x-forwarded-proto"] = "https";
+  const forwardedUser = resolveForwardedUser(clientRequest);
+  if (forwardedUser) {
+    forwardedHeaders["x-forwarded-user"] = forwardedUser;
+  }
 
   const upstreamRequest = http.request(
     {
@@ -245,8 +249,13 @@ function proxyUpgradeRequest(request, socket, head) {
     return;
   }
 
+  const requestUrl = new URL(request.url, "http://127.0.0.1");
+  const forwardedUser = normalizeClientId(requestUrl.searchParams.get("client_id"));
+  requestUrl.searchParams.delete("client_id");
+  const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
+
   const upstream = net.connect(INTERNAL_GATEWAY_PORT, INTERNAL_GATEWAY_HOST, () => {
-    let rawRequest = `${request.method} ${request.url} HTTP/${request.httpVersion}\r\n`;
+    let rawRequest = `${request.method} ${upstreamPath} HTTP/${request.httpVersion}\r\n`;
     const filteredHeaders = [];
     for (let index = 0; index < request.rawHeaders.length; index += 2) {
       const headerName = request.rawHeaders[index];
@@ -270,6 +279,9 @@ function proxyUpgradeRequest(request, socket, head) {
     filteredHeaders.push(["X-Forwarded-For", clientAddress(request)]);
     filteredHeaders.push(["X-Forwarded-Host", request.headers.host || ""]);
     filteredHeaders.push(["X-Forwarded-Proto", "https"]);
+    if (forwardedUser) {
+      filteredHeaders.push(["X-Forwarded-User", forwardedUser]);
+    }
     for (const [headerName, headerValue] of filteredHeaders) {
       rawRequest += `${headerName}: ${headerValue}\r\n`;
     }
@@ -302,6 +314,11 @@ function clientAddress(request) {
     return forwarded[0];
   }
   return request.socket.remoteAddress || "";
+}
+
+function resolveForwardedUser(request) {
+  const clientId = normalizeClientId(request.headers["x-lexie-client-id"]);
+  return clientId || "";
 }
 
 function sendJson(response, statusCode, payload) {
