@@ -147,6 +147,7 @@ async function patchOpenClawConfig() {
   );
 
   defaults.workspace = WORKSPACE_ROOT;
+  defaults.thinkingDefault = "high";
 
   memorySearch.enabled = true;
   memorySearch.provider = "openai";
