@@ -7,7 +7,7 @@ Create Date: 2026-03-16
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 
 revision = "004"
 down_revision = "003"
@@ -114,8 +114,8 @@ def upgrade() -> None:
         sa.UniqueConstraint("integration"),
     )
 
-    entity_type = sa.Enum("company", "person", name="entity_type")
-    watch_target_type = sa.Enum("company", "person", name="watch_target_type")
+    entity_type = ENUM("company", "person", name="entity_type", create_type=False)
+    watch_target_type = ENUM("company", "person", name="watch_target_type", create_type=False)
     entity_type.create(op.get_bind(), checkfirst=True)
     watch_target_type.create(op.get_bind(), checkfirst=True)
 
@@ -416,8 +416,8 @@ def downgrade() -> None:
     op.drop_index("idx_entities_type", table_name="entities")
     op.drop_table("entities")
 
-    watch_target_type = sa.Enum("company", "person", name="watch_target_type")
-    entity_type = sa.Enum("company", "person", name="entity_type")
+    watch_target_type = ENUM("company", "person", name="watch_target_type", create_type=False)
+    entity_type = ENUM("company", "person", name="entity_type", create_type=False)
     watch_target_type.drop(op.get_bind(), checkfirst=True)
     entity_type.drop(op.get_bind(), checkfirst=True)
 
