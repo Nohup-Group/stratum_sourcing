@@ -342,8 +342,28 @@ function proxyUpgradeRequest(request, socket, head) {
 
   const upstream = net.connect(INTERNAL_GATEWAY_PORT, INTERNAL_GATEWAY_HOST, () => {
     let rawRequest = `${request.method} ${request.url} HTTP/${request.httpVersion}\r\n`;
+    const filteredHeaders = [];
     for (let index = 0; index < request.rawHeaders.length; index += 2) {
-      rawRequest += `${request.rawHeaders[index]}: ${request.rawHeaders[index + 1]}\r\n`;
+      const headerName = request.rawHeaders[index];
+      const headerValue = request.rawHeaders[index + 1];
+      const normalized = headerName.toLowerCase();
+      if (
+        normalized === "host" ||
+        normalized === "forwarded" ||
+        normalized === "x-forwarded-for" ||
+        normalized === "x-forwarded-host" ||
+        normalized === "x-forwarded-proto" ||
+        normalized === "x-real-ip" ||
+        normalized === "cf-connecting-ip"
+      ) {
+        continue;
+      }
+      filteredHeaders.push([headerName, headerValue]);
+    }
+
+    filteredHeaders.push(["Host", `${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`]);
+    for (const [headerName, headerValue] of filteredHeaders) {
+      rawRequest += `${headerName}: ${headerValue}\r\n`;
     }
     rawRequest += "\r\n";
 
