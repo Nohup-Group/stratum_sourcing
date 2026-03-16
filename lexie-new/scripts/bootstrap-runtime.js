@@ -127,6 +127,7 @@ async function patchOpenClawConfig() {
   const defaults = ensureObject(agents, "defaults");
   const gateway = ensureObject(config, "gateway");
   const gatewayAuth = ensureObject(gateway, "auth");
+  const gatewayTrustedProxy = ensureObject(gatewayAuth, "trustedProxy");
   const gatewayControlUi = ensureObject(gateway, "controlUi");
   const memorySearch = ensureObject(defaults, "memorySearch");
   const experimental = ensureObject(memorySearch, "experimental");
@@ -163,9 +164,9 @@ async function patchOpenClawConfig() {
 
   session.dmScope = "per-channel-peer";
 
-  if (process.env.OPENCLAW_GATEWAY_TOKEN) {
-    gatewayAuth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
-  }
+  gatewayAuth.mode = "trusted-proxy";
+  gatewayTrustedProxy.userHeader = "x-forwarded-user";
+  gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
 
   for (const origin of splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS)) {
     configuredOrigins.add(origin);

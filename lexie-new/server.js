@@ -23,7 +23,6 @@ const INTERNAL_GATEWAY_PORT = parseInteger(
   process.env.INTERNAL_GATEWAY_PORT || process.env.OPENCLAW_INTERNAL_PORT,
   18789,
 );
-const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN;
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || "/data";
 const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const OPENCLAW_WORKSPACE_DIR =
@@ -31,10 +30,6 @@ const OPENCLAW_WORKSPACE_DIR =
 const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
-
-if (!OPENCLAW_GATEWAY_TOKEN) {
-  throw new Error("OPENCLAW_GATEWAY_TOKEN is required");
-}
 
 let shuttingDown = false;
 let gatewayProcess = null;
@@ -148,10 +143,6 @@ async function startGateway() {
     "loopback",
     "--port",
     String(INTERNAL_GATEWAY_PORT),
-    "--auth",
-    "token",
-    "--token",
-    OPENCLAW_GATEWAY_TOKEN,
     "--allow-unconfigured",
   ];
 
