@@ -282,6 +282,54 @@ describe("useMessages", () => {
     expect(result.current.messages[1]?.id).toBe(liveAssistantId);
   });
 
+  it("does not duplicate a settled assistant when authoritative history only changes markdown whitespace", () => {
+    const initialHistory = [message("user", "Show me the examples", { id: "db-user-1" })];
+    const websocketAssistant =
+      "Yes - confirmed with concrete data.\n\n### 1) Examples\n\n- app upload: `content/a.md`\n(`Source type: app_upload`)";
+    const authoritativeAssistant =
+      "Yes - confirmed with concrete data.\n\n### 1) Examples\n\n  - app upload: `content/a.md`  \n    (`Source type: app_upload`)";
+
+    const { result } = renderHook(() =>
+      useMessages({
+        gatewayEnabled: true,
+        transport: "gateway",
+        activeSessionKey: "session-1",
+        activeSessionHistory: initialHistory,
+        activeSessionHistoryLoaded: true,
+      }),
+    );
+
+    act(() => {
+      result.current.setMessagesFromHistory(initialHistory);
+    });
+
+    act(() => {
+      gatewayEventListener?.({
+        event: "chat",
+        payload: {
+          sessionKey: "session-1",
+          runId: "run-1",
+          state: "final",
+          message: { text: websocketAssistant },
+        },
+      });
+    });
+
+    act(() => {
+      result.current.setMessagesFromHistory([
+        ...initialHistory,
+        message("assistant", authoritativeAssistant, { id: "db-assistant-1" }),
+      ]);
+    });
+
+    expect(
+      result.current.messages.filter((entry) => entry.role === "assistant"),
+    ).toHaveLength(1);
+    expect(result.current.messages[1]?.parts).toEqual([
+      { type: "text", text: authoritativeAssistant },
+    ]);
+  });
+
   it("does not clear a known non-empty session while the gateway key is temporarily unavailable", () => {
     const history = [
       message("user", "Hallo", { id: "db-user-1" }),

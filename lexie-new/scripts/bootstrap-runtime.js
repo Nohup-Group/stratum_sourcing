@@ -38,6 +38,21 @@ function splitAllowedOrigins(raw) {
     .filter(Boolean);
 }
 
+function toHttpsOrigin(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
 async function ensureDir(dirPath) {
   await fs.mkdir(dirPath, { recursive: true });
 }
@@ -174,8 +189,14 @@ async function patchOpenClawConfig() {
   for (const origin of splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS)) {
     configuredOrigins.add(origin);
   }
-  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-    configuredOrigins.add(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+  for (const origin of [
+    process.env.RAILWAY_PUBLIC_DOMAIN,
+    process.env.RAILWAY_SERVICE_LEXIE_NEW_FRONTEND_URL,
+  ]) {
+    const normalizedOrigin = toHttpsOrigin(origin);
+    if (normalizedOrigin) {
+      configuredOrigins.add(normalizedOrigin);
+    }
   }
   gatewayControlUi.allowedOrigins = Array.from(configuredOrigins);
 

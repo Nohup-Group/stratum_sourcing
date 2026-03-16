@@ -549,7 +549,7 @@ function hasMatchingTrailingAssistantMessage(
   messages: AgentMessage[],
   assistantText: string,
 ): boolean {
-  const expected = assistantText.trim();
+  const expected = normalizeComparableChatText(assistantText);
   if (!expected) {
     return false;
   }
@@ -558,7 +558,10 @@ function hasMatchingTrailingAssistantMessage(
     if (message.role !== "assistant") {
       return false;
     }
-    return extractTextFromAgentMessage(message).trim() === expected;
+    return (
+      normalizeComparableChatText(extractTextFromAgentMessage(message)) ===
+      expected
+    );
   }
   return false;
 }
