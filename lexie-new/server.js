@@ -149,9 +149,10 @@ async function startGateway() {
   log(
     `starting openclaw gateway on ${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`,
   );
+  const { OPENCLAW_GATEWAY_TOKEN: _ignoredGatewayToken, ...gatewayEnv } = process.env;
   gatewayProcess = spawn("openclaw", args, {
     env: {
-      ...process.env,
+      ...gatewayEnv,
       HOME: OPENCLAW_HOME,
       OPENCLAW_HOME,
       OPENCLAW_STATE_DIR,
