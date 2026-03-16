@@ -1,6 +1,6 @@
 const http = require("http");
 const net = require("net");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const { Pool } = require("pg");
 const {
   DEFAULT_AGENT_ID,
@@ -31,6 +31,11 @@ const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
 const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
+const OPENCLAW_CONFIG_TIMEOUT_MS = parseInteger(
+  process.env.OPENCLAW_CONFIG_TIMEOUT_MS,
+  15000,
+);
 
 if (!OPENCLAW_GATEWAY_TOKEN) {
   throw new Error("OPENCLAW_GATEWAY_TOKEN is required");
@@ -77,26 +82,66 @@ function logError(message) {
 }
 
 function runOpenClaw(args, options = {}) {
-  return spawnSync("openclaw", args, {
-    env: process.env,
-    encoding: "utf8",
-    ...options,
+  return new Promise((resolve, reject) => {
+    const child = spawn("openclaw", args, {
+      env: process.env,
+      stdio: "pipe",
+      ...options,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill("SIGTERM");
+      reject(new Error(`openclaw ${args.join(" ")} timed out`));
+    }, OPENCLAW_CONFIG_TIMEOUT_MS);
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve({ status: code, signal, stdout, stderr });
+    });
   });
 }
 
-function syncGatewayConfig() {
-  const tokenResult = runOpenClaw(
-    [
+async function syncGatewayConfig() {
+  try {
+    const tokenResult = await runOpenClaw([
       "config",
       "set",
       "--json",
       "gateway.auth.token",
       JSON.stringify(OPENCLAW_GATEWAY_TOKEN),
-    ],
-    { stdio: "pipe" },
-  );
-  if (tokenResult.status !== 0) {
-    logError(`failed to sync gateway token: ${tokenResult.stderr.trim()}`);
+    ]);
+    if (tokenResult.status !== 0) {
+      logError(`failed to sync gateway token: ${tokenResult.stderr.trim()}`);
+    }
+  } catch (error) {
+    logError(`failed to sync gateway token: ${error.stack || error.message}`);
   }
 
   const origins = new Set(splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS));
@@ -109,18 +154,19 @@ function syncGatewayConfig() {
     return;
   }
 
-  const originResult = runOpenClaw(
-    [
+  try {
+    const originResult = await runOpenClaw([
       "config",
       "set",
       "--json",
       "gateway.controlUi.allowedOrigins",
       JSON.stringify(Array.from(origins)),
-    ],
-    { stdio: "pipe" },
-  );
-  if (originResult.status !== 0) {
-    logError(`failed to sync allowed origins: ${originResult.stderr.trim()}`);
+    ]);
+    if (originResult.status !== 0) {
+      logError(`failed to sync allowed origins: ${originResult.stderr.trim()}`);
+    }
+  } catch (error) {
+    logError(`failed to sync allowed origins: ${error.stack || error.message}`);
   }
 }
 
@@ -188,7 +234,7 @@ async function startGateway() {
   }
 
   gatewayReady = false;
-  syncGatewayConfig();
+  await syncGatewayConfig();
 
   const args = [
     "gateway",
@@ -598,8 +644,8 @@ const server = http.createServer((request, response) => {
 
 server.on("upgrade", proxyUpgradeRequest);
 
-server.listen(PORT, () => {
-  log(`wrapper listening on ${PORT}`);
+server.listen(PORT, LISTEN_HOST, () => {
+  log(`wrapper listening on ${LISTEN_HOST}:${PORT}`);
   void ensureSessionStore();
   startGateway().catch((error) => {
     logError(`gateway start failed: ${error.stack || error.message}`);
