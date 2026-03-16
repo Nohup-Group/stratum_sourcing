@@ -13,6 +13,7 @@ async function runOpsPrompt({
   agent,
   systemPrompt,
   userPrompt,
+  gatewayToken,
   timeoutMs = 120000,
 }) {
   const sessionKey = `ops-${agent || "agent"}-${crypto.randomUUID()}`;
@@ -80,6 +81,7 @@ async function runOpsPrompt({
             scopes: ["operator.admin", "operator.read", "operator.write"],
             caps: [],
             commands: [],
+            ...(gatewayToken ? { auth: { token: gatewayToken } } : {}),
           });
           await request("chat.send", {
             sessionKey,

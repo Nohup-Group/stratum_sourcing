@@ -537,6 +537,7 @@ async function handleApiRequest(request, response) {
       agent,
       systemPrompt,
       userPrompt,
+      gatewayToken: process.env.OPENCLAW_GATEWAY_TOKEN || "",
       timeoutMs,
     });
     sendJson(response, 200, { agent, outputText });
