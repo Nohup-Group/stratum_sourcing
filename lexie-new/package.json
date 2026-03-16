@@ -7,6 +7,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "lint": "node --check server.js"
+    "lint": "node --check server.js && node --check scripts/bootstrap-runtime.js && node --check scripts/generate-backfill.js"
   }
 }

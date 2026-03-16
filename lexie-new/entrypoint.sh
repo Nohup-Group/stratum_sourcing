@@ -2,6 +2,7 @@
 set -euo pipefail
 
 DATA_ROOT="/data"
+export OPENCLAW_HOME="${OPENCLAW_HOME:-${DATA_ROOT}}"
 export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-${DATA_ROOT}/.openclaw}"
 export OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-${DATA_ROOT}/workspace}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${DATA_ROOT}/.config}"
@@ -16,6 +17,9 @@ umask 077
 mkdir -p \
   "${OPENCLAW_STATE_DIR}" \
   "${OPENCLAW_WORKSPACE_DIR}" \
+  "${OPENCLAW_WORKSPACE_DIR}/knowledge" \
+  "${OPENCLAW_WORKSPACE_DIR}/skills" \
+  "${OPENCLAW_WORKSPACE_DIR}/memory" \
   "${XDG_CONFIG_HOME}" \
   "${XDG_CONFIG_HOME}/gogcli" \
   "${XDG_DATA_HOME}" \
@@ -29,6 +33,10 @@ mkdir -p \
 mkdir -p /root/.openclaw
 rm -rf /root/.openclaw/workspace
 ln -s "${OPENCLAW_WORKSPACE_DIR}" /root/.openclaw/workspace
+
+if [[ ! -e /openclaw ]]; then
+  ln -s /usr/local/lib/node_modules/openclaw /openclaw
+fi
 
 chmod 700 \
   "${DATA_ROOT}" \
@@ -48,6 +56,8 @@ else
 fi
 eval "${keyring_output}"
 export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
+
+node /app/scripts/bootstrap-runtime.js
 
 cleanup() {
   if [[ -n "${DBUS_SESSION_BUS_PID:-}" ]]; then

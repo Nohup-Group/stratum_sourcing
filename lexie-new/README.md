@@ -19,7 +19,16 @@ Standalone OpenClaw Railway service for the Lexie migration. This service is sep
 - XDG data: `/data/.local/share`
 - XDG cache: `/data/.cache`
 
-The entrypoint starts a session DBus bus and a secrets-only `gnome-keyring-daemon` before starting the Node wrapper so `gog` can keep credentials on the persistent volume.
+The entrypoint now also:
+
+- exports `OPENCLAW_HOME=/data` so OpenClaw resolves its active workspace from the volume
+- maintains a compatibility symlink for old `/openclaw/skills/*` references
+- materializes the managed workspace payload from `/app/workspace` into `/data/workspace`
+- patches `/data/.openclaw/openclaw.json` with the required Phase 1 memory + skills defaults
+- generates backfill manifests and transcript shards under `/data/workspace/knowledge/backfill`
+
+After that it starts a session DBus bus and a secrets-only `gnome-keyring-daemon`
+before starting the Node wrapper so `gog` can keep credentials on the persistent volume.
 
 ## Railway provisioning
 
@@ -52,6 +61,18 @@ Bring the new service up once with the empty volume and confirm:
    - `agents.defaults.memorySearch.experimental.sessionMemory = true`
    - `agents.defaults.memorySearch.sources = ["memory", "sessions"]`
    - enable remote batch indexing
+   - `skills.load.extraDirs = ["/data/workspace/skills"]`
+
+## Workspace payload
+
+Managed bootstrap files and Stratum-specific knowledge/skills live in:
+
+- `/app/workspace/*.md`
+- `/app/workspace/knowledge/**/*`
+- `/app/workspace/skills/**/*`
+
+The container copies these into `/data/workspace` on startup without deleting
+other non-managed files already present on the volume.
 
 ## Cutover
 

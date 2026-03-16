@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PORT=8080 \
     INTERNAL_GATEWAY_HOST=127.0.0.1 \
     INTERNAL_GATEWAY_PORT=18789 \
+    OPENCLAW_HOME=/data \
     OPENCLAW_STATE_DIR=/data/.openclaw \
     OPENCLAW_WORKSPACE_DIR=/data/workspace \
     XDG_CONFIG_HOME=/data/.config \
@@ -65,9 +66,13 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY server.js entrypoint.sh README.md railway.toml ./
+COPY scripts/ /app/scripts/
+COPY workspace/ /app/workspace/
 
 RUN mkdir -p /app /data \
-    && chmod +x /app/entrypoint.sh
+    && chmod +x /app/entrypoint.sh \
+    && find /app/scripts -type f -name '*.js' -exec chmod 0644 {} \; \
+    && ln -s /usr/local/lib/node_modules/openclaw /openclaw
 
 EXPOSE 8080 18789
 

@@ -9,6 +9,7 @@ const INTERNAL_GATEWAY_PORT = parseInteger(
   18789,
 );
 const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN;
+const OPENCLAW_HOME = process.env.OPENCLAW_HOME || "/data";
 const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
@@ -147,6 +148,7 @@ async function startGateway() {
   gatewayProcess = spawn("openclaw", args, {
     env: {
       ...process.env,
+      OPENCLAW_HOME,
       OPENCLAW_STATE_DIR,
       OPENCLAW_WORKSPACE_DIR,
     },
