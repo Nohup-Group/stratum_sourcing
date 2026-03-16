@@ -22,12 +22,8 @@ export default function WelcomeContent() {
       />
 
       <h1 className="max-w-2xl text-balance text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-5xl">
-        A sharper workspace for Stratum conversations.
+        Chat with Lexie.
       </h1>
-      <p className="mt-4 max-w-2xl text-balance text-sm leading-7 text-muted-foreground sm:text-base">
-        Lexie runs here as a focused single-agent chat surface with persistent sessions,
-        live tool traces, attachments, and OpenClaw controls.
-      </p>
 
       <div className="mt-8 flex max-w-3xl flex-wrap justify-center gap-2">
         {SUGGESTIONS.map((text) => (

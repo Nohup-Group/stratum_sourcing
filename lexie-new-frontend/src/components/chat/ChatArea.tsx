@@ -1,21 +1,7 @@
-import { Menu, Globe, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Menu, Sparkles } from "lucide-react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import type {
-  OpenClawChatCapabilities,
-  OpenClawQueueMode,
-  OpenClawVerboseLevel,
-  Session,
-} from "@/lib/types";
+import type { OpenClawChatCapabilities, Session } from "@/lib/types";
 import type { ViewportKind } from "@/hooks/use-viewport-kind";
 import WelcomeContent from "./WelcomeContent";
 
@@ -26,15 +12,6 @@ interface ChatAreaProps {
   chatCapabilities?: OpenClawChatCapabilities | null;
   currentSession?: Session | null;
   onOpenSidebar: () => void;
-  webSearchEnabled: boolean;
-  webSearchLoading: boolean;
-  onWebSearchToggle: (enabled: boolean) => void | Promise<void>;
-  sessionSettingsAvailable: boolean;
-  verboseLevel: OpenClawVerboseLevel;
-  queueMode: OpenClawQueueMode;
-  sessionSettingsLoading: boolean;
-  onVerboseLevelChange: (value: OpenClawVerboseLevel) => void | Promise<void>;
-  onQueueModeChange: (value: OpenClawQueueMode) => void | Promise<void>;
 }
 
 export default function ChatArea({
@@ -44,19 +21,7 @@ export default function ChatArea({
   chatCapabilities,
   currentSession,
   onOpenSidebar,
-  webSearchEnabled,
-  webSearchLoading,
-  onWebSearchToggle,
-  sessionSettingsAvailable,
-  verboseLevel,
-  queueMode,
-  sessionSettingsLoading,
-  onVerboseLevelChange,
-  onQueueModeChange,
 }: ChatAreaProps) {
-  const isPhone = viewportKind === "phone";
-  const webSearchAvailable = chatCapabilities?.webSearch.available === true;
-  const webSearchDisabled = !hasSession || webSearchLoading || !webSearchAvailable;
   const subtitle = currentSession
     ? null
     : "Start a new chat or type to open one automatically";
@@ -94,72 +59,6 @@ export default function ChatArea({
                 {subtitle}
               </div>
             ) : null}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant={webSearchEnabled ? "secondary" : "outline"}
-              size={isPhone ? "icon-sm" : "sm"}
-              disabled={webSearchDisabled}
-              onClick={() => void onWebSearchToggle(!webSearchEnabled)}
-              className="rounded-full bg-background/92 shadow-sm"
-              title={
-                !hasSession
-                  ? "Start a session first"
-                  : webSearchDisabled
-                    ? "Web search is unavailable"
-                    : webSearchEnabled
-                      ? "Disable web search"
-                      : "Enable web search"
-              }
-            >
-              <Globe className="size-4" />
-              {!isPhone && <span>Web</span>}
-            </Button>
-
-            {sessionSettingsAvailable && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    disabled={sessionSettingsLoading}
-                    className="rounded-full bg-background/92 shadow-sm"
-                    title="Session settings"
-                  >
-                    <SlidersHorizontal className="size-4" />
-                    <span className="sr-only">Session settings</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Verbosity</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={verboseLevel}
-                    onValueChange={(value) =>
-                      void onVerboseLevelChange(value as OpenClawVerboseLevel)
-                    }
-                  >
-                    <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="on">On</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="full">Full</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Follow-up mode</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={queueMode}
-                    onValueChange={(value) =>
-                      void onQueueModeChange(value as OpenClawQueueMode)
-                    }
-                  >
-                    <DropdownMenuRadioItem value="collect">Collect</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="followup">Follow-up</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="steer">Steer</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
         </div>
       </header>

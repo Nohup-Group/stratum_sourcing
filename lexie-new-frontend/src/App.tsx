@@ -20,15 +20,6 @@ export default function App() {
     unarchiveSession,
     connectionError,
     chatCapabilities,
-    webSearchEnabled,
-    webSearchLoading,
-    setWebSearchEnabled,
-    sessionSettingsAvailable,
-    verboseLevel,
-    queueMode,
-    sessionSettingsLoading,
-    setVerboseLevel,
-    setQueueMode,
   } = useAgentRuntime();
   const viewportKind = useViewportKind();
 
@@ -57,15 +48,6 @@ export default function App() {
               currentSession={currentSession}
               onOpenSidebar={openSidebar}
               chatCapabilities={chatCapabilities}
-              webSearchEnabled={webSearchEnabled}
-              webSearchLoading={webSearchLoading}
-              onWebSearchToggle={setWebSearchEnabled}
-              sessionSettingsAvailable={sessionSettingsAvailable}
-              verboseLevel={verboseLevel}
-              queueMode={queueMode}
-              sessionSettingsLoading={sessionSettingsLoading}
-              onVerboseLevelChange={setVerboseLevel}
-              onQueueModeChange={setQueueMode}
             />
           )}
         </AppShell>
