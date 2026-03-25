@@ -49,7 +49,10 @@ async def call_llm(
 
     # 3. Anthropic API (direct)
     if settings.anthropic_api_key:
-        return await _call_anthropic(prompt, system, max_tokens, temperature, model)
+        try:
+            return await _call_anthropic(prompt, system, max_tokens, temperature, model)
+        except Exception as e:
+            logger.warning("anthropic_unavailable", error=str(e))
 
     # 4. OpenAI API (direct, with API key)
     if settings.openai_api_key:
