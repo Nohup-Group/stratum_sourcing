@@ -59,6 +59,10 @@ export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
 
 node /app/scripts/bootstrap-runtime.js
 
+# Set openai-direct as primary model (uses OPENAI_API_KEY, not Codex OAuth)
+openclaw config set agents.defaults.model.primary "openai-direct/gpt-5.4" 2>/dev/null || true
+openclaw config set agents.defaults.model.fallbacks '["openai-codex/gpt-5.4"]' 2>/dev/null || true
+
 cleanup() {
   if [[ -n "${DBUS_SESSION_BUS_PID:-}" ]]; then
     kill "${DBUS_SESSION_BUS_PID}" 2>/dev/null || true
