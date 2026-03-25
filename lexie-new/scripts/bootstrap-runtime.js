@@ -164,6 +164,30 @@ async function patchOpenClawConfig() {
   defaults.workspace = WORKSPACE_ROOT;
   defaults.thinkingDefault = "high";
 
+  // --- Model: openai-direct (OPENAI_API_KEY) as primary, codex as fallback ---
+  const models = ensureObject(config, "models");
+  const providers = ensureObject(models, "providers");
+  const openaiDirect = ensureObject(providers, "openai-direct");
+  openaiDirect.baseUrl = "https://api.openai.com/v1";
+  openaiDirect.apiKey = "${OPENAI_API_KEY}";
+  openaiDirect.api = "openai-responses";
+  openaiDirect.models = [
+    {
+      id: "gpt-5.4",
+      name: "gpt-5.4",
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 1048576,
+      maxTokens: 32000,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      api: "openai-responses",
+    },
+  ];
+
+  const defaultModel = ensureObject(defaults, "model");
+  defaultModel.primary = "openai-direct/gpt-5.4";
+  defaultModel.fallbacks = ["openai-codex/gpt-5.4"];
+
   memorySearch.enabled = true;
   memorySearch.provider = "openai";
   memorySearch.model = "text-embedding-3-small";
