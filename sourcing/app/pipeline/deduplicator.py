@@ -37,26 +37,21 @@ async def is_duplicate(db: AsyncSession, dedup_hash: str) -> bool:
     return exists
 
 
-async def is_semantic_duplicate(
-    db: AsyncSession,
-    title: str,
-    summary: str,
-    source_id: int,
-) -> bool:
-    """Check if a semantically similar finding exists from a different source.
+# Cache for batched recent-finding embeddings (rebuilt per scan run)
+_recent_findings_cache: dict[str, tuple[list, "np.ndarray | None"]] = {}
+_RECENT_CACHE_KEY = "recent"
 
-    Uses embedding cosine similarity to detect the same news reported by
-    different sources with different wording.
 
-    Returns True if a finding with similarity > SEMANTIC_THRESHOLD exists
-    from a different source within the lookback window.
-    """
-    # Build text to compare
-    new_text = _normalize_text(f"{title} {summary}")
-    if not new_text:
-        return False
+async def _get_recent_embeddings(
+    db: AsyncSession, source_id: int
+) -> tuple[list, "np.ndarray | None"]:
+    """Batch-embed recent findings from other sources.  Cached per scan run."""
+    import numpy as np
 
-    # Get recent findings from OTHER sources
+    cache_key = f"{_RECENT_CACHE_KEY}:{source_id}"
+    if cache_key in _recent_findings_cache:
+        return _recent_findings_cache[cache_key]
+
     since = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
     stmt = (
         select(Finding.id, Finding.title, Finding.summary, Finding.source_id)
@@ -68,48 +63,137 @@ async def is_semantic_duplicate(
         .order_by(Finding.relevance_score.desc())
         .limit(200)
     )
-    result = await db.execute(stmt)
-    recent = result.all()
+    recent = (await db.execute(stmt)).all()
 
     if not recent:
+        _recent_findings_cache[cache_key] = ([], None)
+        return [], None
+
+    # Batch embed all at once (1 API call instead of 200)
+    texts = [_normalize_text(f"{r.title} {r.summary}")[:500] for r in recent]
+    emb_matrix = await _batch_embed(texts)
+
+    _recent_findings_cache[cache_key] = (recent, emb_matrix)
+    return recent, emb_matrix
+
+
+async def _batch_embed(texts: list[str]) -> "np.ndarray | None":
+    """Batch-embed a list of texts using OpenRouter or OpenAI."""
+    import numpy as np
+
+    if settings.openrouter_api_key:
+        base_url = "https://openrouter.ai/api/v1"
+        api_key = settings.openrouter_api_key
+        model = settings.embedding_model
+        extra_headers = {
+            "HTTP-Referer": "https://stratum3.vc",
+            "X-OpenRouter-Title": "stratum-sourcing",
+        }
+    elif settings.openai_api_key:
+        base_url = "https://api.openai.com/v1"
+        api_key = settings.openai_api_key
+        model = "text-embedding-3-small"
+        extra_headers = {}
+    else:
+        return None
+
+    try:
+        headers = {"Authorization": f"Bearer {api_key}", **extra_headers}
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{base_url}/embeddings",
+                headers=headers,
+                json={"model": model, "input": texts},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        vecs = []
+        for item in sorted(data["data"], key=lambda x: x["index"]):
+            v = np.array(item["embedding"], dtype=np.float32)
+            norm = np.linalg.norm(v)
+            if norm > 0:
+                v /= norm
+            vecs.append(v)
+        return np.vstack(vecs)
+
+    except Exception as e:
+        logger.warning("batch_embed_failed", error=str(e))
+        return None
+
+
+async def is_semantic_duplicate(
+    db: AsyncSession,
+    title: str,
+    summary: str,
+    source_id: int,
+) -> bool:
+    """Check if a semantically similar finding exists from a different source.
+
+    Uses batched embedding cosine similarity (1 API call for all recent findings,
+    cached per scan run) instead of embedding each finding individually.
+
+    Returns True if a finding with similarity > SEMANTIC_THRESHOLD exists
+    from a different source within the lookback window.
+    """
+    import numpy as np
+
+    new_text = _normalize_text(f"{title} {summary}")
+    if not new_text:
         return False
 
-    # Try embedding-based comparison first, fall back to TF-IDF
+    recent, emb_matrix = await _get_recent_embeddings(db, source_id)
+    if not recent or emb_matrix is None:
+        # No embeddings available — fall back to TF-IDF
+        return _tfidf_duplicate(title, summary, recent)
+
+    # Embed the new finding (single text — may hit cache)
     new_embedding = await _get_embedding(new_text)
+    if new_embedding is None:
+        return _tfidf_duplicate(title, summary, recent)
 
-    if new_embedding is not None:
-        # Embedding-based comparison
-        for row in recent:
-            existing_text = _normalize_text(f"{row.title} {row.summary}")
-            existing_embedding = await _get_embedding(existing_text)
-            if existing_embedding is not None:
-                sim = _cosine_similarity(new_embedding, existing_embedding)
-                if sim >= SEMANTIC_THRESHOLD:
-                    logger.info(
-                        "semantic_duplicate_found",
-                        new_title=title[:60],
-                        existing_id=row.id,
-                        existing_title=row.title[:60],
-                        similarity=round(sim, 4),
-                    )
-                    return True
-    else:
-        # Fallback: TF-IDF word overlap (no API needed)
-        new_tokens = _tokenize(new_text)
-        for row in recent:
-            existing_text = _normalize_text(f"{row.title} {row.summary}")
-            existing_tokens = _tokenize(existing_text)
-            sim = _jaccard_similarity(new_tokens, existing_tokens)
-            if sim >= 0.65:  # Lower threshold for word overlap
-                logger.info(
-                    "semantic_duplicate_found_tfidf",
-                    new_title=title[:60],
-                    existing_id=row.id,
-                    existing_title=row.title[:60],
-                    similarity=round(sim, 4),
-                )
-                return True
+    new_vec = np.array(new_embedding, dtype=np.float32)
+    norm = np.linalg.norm(new_vec)
+    if norm > 0:
+        new_vec /= norm
 
+    # Vectorized comparison: one dot product against all recent embeddings
+    scores = emb_matrix @ new_vec
+    max_sim = float(np.max(scores))
+    max_idx = int(np.argmax(scores))
+
+    if max_sim >= SEMANTIC_THRESHOLD:
+        matched = recent[max_idx]
+        logger.info(
+            "semantic_duplicate_found",
+            new_title=title[:60],
+            existing_id=matched.id,
+            existing_title=matched.title[:60],
+            similarity=round(max_sim, 4),
+        )
+        return True
+
+    return False
+
+
+def _tfidf_duplicate(title: str, summary: str, recent: list) -> bool:
+    """Fallback TF-IDF dedup when embeddings are unavailable."""
+    if not recent:
+        return False
+    new_tokens = _tokenize(_normalize_text(f"{title} {summary}"))
+    for row in recent:
+        existing_text = _normalize_text(f"{row.title} {row.summary}")
+        existing_tokens = _tokenize(existing_text)
+        sim = _jaccard_similarity(new_tokens, existing_tokens)
+        if sim >= 0.65:
+            logger.info(
+                "semantic_duplicate_found_tfidf",
+                new_title=title[:60],
+                existing_id=row.id,
+                existing_title=row.title[:60],
+                similarity=round(sim, 4),
+            )
+            return True
     return False
 
 
@@ -121,24 +205,40 @@ _CACHE_MAX = 500
 
 
 async def _get_embedding(text: str) -> list[float] | None:
-    """Get embedding vector for text. Returns None if no embedding API available."""
+    """Get embedding vector for text. Returns None if no embedding API available.
+
+    Uses OpenRouter (Qwen3) if available, falls back to OpenAI.
+    """
     cache_key = hashlib.md5(text.encode()).hexdigest()
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
 
-    # Try OpenAI embeddings API (works with both OpenAI API key and Codex)
-    api_key = settings.openai_api_key
-    if not api_key:
+    # Determine provider: prefer OpenRouter, fall back to OpenAI
+    if settings.openrouter_api_key:
+        base_url = "https://openrouter.ai/api/v1"
+        api_key = settings.openrouter_api_key
+        model = settings.embedding_model
+        extra_headers = {
+            "HTTP-Referer": "https://stratum3.vc",
+            "X-OpenRouter-Title": "stratum-sourcing",
+        }
+    elif settings.openai_api_key:
+        base_url = "https://api.openai.com/v1"
+        api_key = settings.openai_api_key
+        model = "text-embedding-3-small"
+        extra_headers = {}
+    else:
         return None
 
     try:
+        headers = {"Authorization": f"Bearer {api_key}", **extra_headers}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"{base_url}/embeddings",
+                headers=headers,
                 json={
-                    "model": settings.embedding_model,
-                    "input": text[:8000],  # API limit
+                    "model": model,
+                    "input": text[:8000],
                 },
             )
             resp.raise_for_status()
@@ -205,3 +305,4 @@ def _jaccard_similarity(a: set[str], b: set[str]) -> float:
 def clear_embedding_cache() -> None:
     """Clear the in-memory embedding cache (call between scan runs)."""
     _embedding_cache.clear()
+    _recent_findings_cache.clear()

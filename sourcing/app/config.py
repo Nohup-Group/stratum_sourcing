@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     oauth_minter_url: str = Field(default="", alias="OAUTH_MINTER_URL")
     oauth_minter_key: str = Field(default="", alias="OAUTH_MINTER_KEY")
     llm_model: str = Field(default="gpt-5.4", alias="LLM_MODEL")
-    embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
+    embedding_model: str = Field(default="qwen/qwen3-embedding-8b", alias="EMBEDDING_MODEL")
+    # --- OpenRouter (embeddings) ---
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
 
     # --- Cron / Security ---
     cron_secret: str = Field(default="", alias="CRON_SECRET")

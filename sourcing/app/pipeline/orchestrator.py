@@ -17,7 +17,8 @@ from app.database import async_session_factory
 from app.models import ScanRun, Snapshot, Source
 from app.pipeline.analyzer import analyze_diff
 from app.pipeline.deduplicator import clear_embedding_cache, is_duplicate, is_semantic_duplicate
-from app.pipeline.differ import compute_diff
+from app.pipeline.differ import compute_diff, split_blocks
+from app.pipeline.prefilter import dedup_blocks_against_findings, filter_blocks
 from app.pipeline.scorer import score_finding
 from app.pipeline.tracker import PipelineTracker, ScanStage
 from app.services.job_queue import enqueue_event
@@ -199,7 +200,48 @@ async def _scan_single_source(source: Source, run_id: int) -> int:
             await db.commit()
             return 0
 
-        tracker.complete(ScanStage.DIFF, duration_ms=diff_ms, details={"changed": True})
+        # Skip LLM if the diff is too small to contain a real finding
+        MIN_DIFF_CHARS = 200
+        if len(diff_text) < MIN_DIFF_CHARS:
+            tracker.complete(ScanStage.DIFF, duration_ms=diff_ms, details={"changed": True, "skipped": True, "chars": len(diff_text)})
+            logger.info("diff_too_small", source_id=source.id, name=source.name, chars=len(diff_text))
+            await db.commit()
+            return 0
+
+        tracker.complete(ScanStage.DIFF, duration_ms=diff_ms, details={"changed": True, "chars": len(diff_text)})
+
+        # --- Stage: PREFILTER (embedding-based relevance check) ---
+        tracker.start(ScanStage.PREFILTER)
+        t0 = time.monotonic()
+        blocks = split_blocks(diff_text)
+        if blocks:
+            filtered_blocks, filter_stats = await filter_blocks(blocks)
+            if filtered_blocks:
+                diff_text = "\n\n---\n\n".join(filtered_blocks)
+            else:
+                # All blocks below threshold — skip LLM entirely
+                prefilter_ms = int((time.monotonic() - t0) * 1000)
+                tracker.complete(ScanStage.PREFILTER, duration_ms=prefilter_ms, details=filter_stats)
+                logger.info("prefilter_all_dropped", source_id=source.id, name=source.name, **filter_stats)
+                await db.commit()
+                return 0
+        else:
+            filter_stats = {"skipped": True, "reason": "no_blocks"}
+        prefilter_ms = int((time.monotonic() - t0) * 1000)
+        tracker.complete(ScanStage.PREFILTER, duration_ms=prefilter_ms, details=filter_stats)
+
+        # --- Pre-analysis dedup: skip blocks that match recent findings ---
+        blocks_for_dedup = split_blocks(diff_text)
+        if blocks_for_dedup:
+            novel_blocks, dedup_stats = await dedup_blocks_against_findings(
+                db, blocks_for_dedup, source.id,
+            )
+            if not novel_blocks:
+                logger.info("pre_dedup_all_known", source_id=source.id, name=source.name, **dedup_stats)
+                await db.commit()
+                return 0
+            if len(novel_blocks) < len(blocks_for_dedup):
+                diff_text = "\n\n---\n\n".join(novel_blocks)
 
         # --- Stage: ANALYZE (LLM, per-category prompt) ---
         tracker.start(ScanStage.ANALYZE)

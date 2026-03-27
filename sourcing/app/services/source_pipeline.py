@@ -85,6 +85,7 @@ Use hourly or every_6_hours for frequently updated feeds and regulators, daily f
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             timeout_seconds=90,
+            caller=f"source_onboarder:source_{source.id}:{source.name}",
         )
     except Exception:
         return {

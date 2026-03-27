@@ -15,6 +15,7 @@ logger = structlog.get_logger()
 class ScanStage(str, Enum):
     FETCH = "fetch"
     DIFF = "diff"
+    PREFILTER = "prefilter"
     ANALYZE = "analyze"
     SCORE = "score"
     DEDUP = "dedup"
@@ -44,7 +45,7 @@ class PipelineTracker:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "status": "running",
         }
-        logger.debug(
+        logger.info(
             "pipeline_stage_start",
             run_id=self.run_id,
             source=self.source_name,
@@ -57,12 +58,13 @@ class PipelineTracker:
             self.stages[stage]["duration_ms"] = duration_ms
             if details:
                 self.stages[stage]["details"] = details
-        logger.debug(
+        logger.info(
             "pipeline_stage_complete",
             run_id=self.run_id,
             source=self.source_name,
             stage=stage,
             duration_ms=duration_ms,
+            **(details or {}),
         )
 
     def fail(self, stage: ScanStage, error: str) -> None:

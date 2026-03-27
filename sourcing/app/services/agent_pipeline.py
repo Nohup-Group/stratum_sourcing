@@ -180,6 +180,7 @@ Return at most 8 entities. Include candidate_source_urls when the evidence alrea
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         timeout_seconds=90,
+        caller=f"entity_extractor:finding_{finding.id}",
     )
     return list(response.get("entities") or [])
 
@@ -245,6 +246,21 @@ async def _entity_context(
     return entity, mentions
 
 
+async def _all_entities_known(db: AsyncSession, finding: Finding) -> bool:
+    """Check if every entity name from the analyzer metadata already exists in the DB."""
+    raw_names = (finding.metadata_ or {}).get("entities") or []
+    if not raw_names:
+        return False  # No entity hints from analyzer — need LLM to discover them
+    normalized = [normalize_name(str(n)) for n in raw_names if str(n).strip()]
+    if not normalized:
+        return False
+    stmt = select(func.count()).select_from(Entity).where(
+        Entity.normalized_name.in_(normalized)
+    )
+    known_count = (await db.execute(stmt)).scalar_one()
+    return known_count >= len(normalized)
+
+
 async def process_entity_extractor_job(db: AsyncSession, job: AgentJob) -> dict:
     payload = job.payload or {}
     finding_ids = list(payload.get("finding_ids") or [])
@@ -260,11 +276,22 @@ async def process_entity_extractor_job(db: AsyncSession, job: AgentJob) -> dict:
 
     created_mentions = 0
     created_entities = 0
+    llm_skipped = 0
     for finding in findings:
-        try:
-            raw_entities = await _extract_entities_with_agent(finding, source)
-        except Exception:
+        # Skip the LLM call if all entities from this finding are already known
+        if await _all_entities_known(db, finding):
             raw_entities = _heuristic_extract_entities(finding, source)
+            llm_skipped += 1
+            logger.info(
+                "entity_extraction_skipped_known",
+                finding_id=finding.id,
+                entities=[str(n) for n in (finding.metadata_ or {}).get("entities", [])],
+            )
+        else:
+            try:
+                raw_entities = await _extract_entities_with_agent(finding, source)
+            except Exception:
+                raw_entities = _heuristic_extract_entities(finding, source)
 
         evidence_urls = [ev.url for ev in finding.evidence_items]
         for raw in raw_entities:
@@ -354,6 +381,7 @@ async def process_entity_extractor_job(db: AsyncSession, job: AgentJob) -> dict:
         "findings_processed": len(findings),
         "created_mentions": created_mentions,
         "created_entities": created_entities,
+        "llm_skipped": llm_skipped,
     }
 
 
@@ -407,17 +435,42 @@ Context:
 
 Evidence URLs:
 {chr(10).join(f"- {url}" for url in evidence_urls) if evidence_urls else "- None"}"""
+    agent_name = "company-researcher" if entity.entity_type == "company" else "people-researcher"
     return await run_ops_json_prompt(
-        agent="company-researcher" if entity.entity_type == "company" else "people-researcher",
+        agent=agent_name,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         timeout_seconds=120,
+        caller=f"researcher:{entity.entity_type}:{entity.display_name}",
     )
+
+
+RESEARCH_COOLDOWN_DAYS = 7
 
 
 async def process_research_job(db: AsyncSession, job: AgentJob) -> dict:
     entity_id = int((job.payload or {}).get("entity_id") or job.entity_id)
     entity, mentions = await _entity_context(db, entity_id)
+
+    # Skip if this entity was already researched recently
+    recent_stmt = (
+        select(EntityResearchSnapshot.created_at)
+        .where(EntityResearchSnapshot.entity_id == entity_id)
+        .order_by(EntityResearchSnapshot.created_at.desc())
+        .limit(1)
+    )
+    last_research = (await db.execute(recent_stmt)).scalar_one_or_none()
+    if last_research is not None:
+        age_days = (utc_now() - last_research).days
+        if age_days < RESEARCH_COOLDOWN_DAYS:
+            logger.info(
+                "research_skipped_recent",
+                entity_id=entity_id,
+                entity=entity.display_name,
+                last_researched_days_ago=age_days,
+            )
+            return {"entity_id": entity_id, "skipped": True, "reason": "recent"}
+
     try:
         profile = await _research_with_agent(entity, mentions)
     except Exception:
@@ -642,6 +695,14 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
         failed = 0
 
         for job in jobs:
+            logger.info(
+                "agent_job_start",
+                job_id=job.id,
+                job_type=job.job_type,
+                source_id=job.source_id,
+                entity_id=job.entity_id,
+                attempt=job.attempts,
+            )
             try:
                 result = await process_agent_job(db, job)
                 job.result = result
@@ -649,6 +710,7 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
                 job.leased_at = None
                 job.lease_owner = None
                 processed += 1
+                logger.info("agent_job_done", job_id=job.id, job_type=job.job_type, result=result)
             except Exception as error:
                 logger.exception("agent_job_failed", job_id=job.id, job_type=job.job_type)
                 await mark_job_failed(db, job, error=str(error), retry=job.attempts < 4)

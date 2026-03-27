@@ -2,6 +2,9 @@
 
 Two-step fetch: parse the feed for recent entries, then fetch the full article
 content for each entry so the analyzer gets real article text and specific URLs.
+
+Uses Trafilatura (from Agrana pipeline) as the primary article extractor,
+falling back to BeautifulSoup heuristics when trafilatura returns too little.
 """
 
 import asyncio
@@ -11,9 +14,11 @@ from datetime import datetime, timedelta, timezone
 import feedparser
 import httpx
 import structlog
+import trafilatura
 from bs4 import BeautifulSoup
 
 from app.sources.base import BaseFetcher, FetchResult
+from app.sources.url_unwrap import unwrap_url_sync
 
 logger = structlog.get_logger()
 
@@ -113,7 +118,7 @@ class RSSFetcher(BaseFetcher):
         # Try the standard link field first
         link = entry.get("link", "").strip()
         if link and not link.endswith((".mp3", ".mp4", ".m4a", ".ogg", ".wav")):
-            return link
+            return unwrap_url_sync(link)
 
         # Check links array for a web link (not enclosure)
         for link_obj in entry.get("links", []):
@@ -121,7 +126,7 @@ class RSSFetcher(BaseFetcher):
             link_type = link_obj.get("type", "")
             rel = link_obj.get("rel", "")
             if href and rel != "enclosure" and not link_type.startswith(("audio/", "video/")):
-                return href
+                return unwrap_url_sync(href)
 
         # No usable web URL
         return ""
@@ -140,24 +145,32 @@ class RSSFetcher(BaseFetcher):
             logger.debug("article_fetch_failed", url=link, error=str(e))
             return None
 
-        soup = BeautifulSoup(html, "lxml")
+        # --- Primary: Trafilatura ---
+        article_text = trafilatura.extract(
+            html,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+            favor_recall=True,
+        )
 
-        # Remove noise
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            tag.decompose()
+        # --- Fallback: BeautifulSoup ---
+        if not article_text or len(article_text) < 100:
+            soup = BeautifulSoup(html, "lxml")
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
 
-        # Extract article content
-        article_text = ""
-        for selector in ["article", "main", "[role='main']", ".post-content", ".entry-content", ".article-body"]:
-            elements = soup.select(selector)
-            if elements:
-                article_text = "\n\n".join(el.get_text(separator="\n", strip=True) for el in elements)
-                break
+            article_text = ""
+            for selector in ["article", "main", "[role='main']", ".post-content", ".entry-content", ".article-body"]:
+                elements = soup.select(selector)
+                if elements:
+                    article_text = "\n\n".join(el.get_text(separator="\n", strip=True) for el in elements)
+                    break
 
-        if not article_text:
-            body = soup.find("body")
-            if body:
-                article_text = body.get_text(separator="\n", strip=True)
+            if not article_text:
+                body = soup.find("body")
+                if body:
+                    article_text = body.get_text(separator="\n", strip=True)
 
         # Truncate
         if len(article_text) > 3000:

@@ -285,6 +285,7 @@ async def analyze_diff(
             prompt=prompt,
             system=_build_system_prompt(),
             max_tokens=4096,
+            caller=f"analyzer:{source_category}:{source_name}",
         )
 
         # Parse JSON response (handle markdown code blocks)

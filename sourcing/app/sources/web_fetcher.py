@@ -1,7 +1,11 @@
-"""Web scraper using httpx + BeautifulSoup.
+"""Web scraper using Trafilatura + BeautifulSoup fallback.
 
 Two-step fetch: scrape the index/blog page for article links, then fetch
 each article to get full content and specific URLs for evidence.
+
+Trafilatura (from Agrana pipeline) is used as the primary content extractor —
+it's production-grade and much better at stripping nav/footer/ads than manual
+BeautifulSoup heuristics.  Falls back to BS4 when trafilatura returns too little.
 """
 
 import asyncio
@@ -11,9 +15,11 @@ from urllib.parse import urljoin
 
 import httpx
 import structlog
+import trafilatura
 from bs4 import BeautifulSoup
 
 from app.sources.base import BaseFetcher, FetchResult
+from app.sources.url_unwrap import unwrap_url_sync
 
 logger = structlog.get_logger()
 
@@ -99,9 +105,9 @@ class WebFetcher(BaseFetcher):
                         el.get_text(separator="\n", strip=True) for el in elements
                     )
                 else:
-                    page_content = self._extract_main_content(soup)
+                    page_content = self._extract_main_content(html, soup)
             else:
-                page_content = self._extract_main_content(soup)
+                page_content = self._extract_main_content(html, soup)
 
             title = soup.title.string.strip() if soup.title and soup.title.string else ""
             pub_date = self._extract_publish_date(soup)
@@ -141,7 +147,7 @@ class WebFetcher(BaseFetcher):
                 if not href or href.startswith("#") or href.startswith("mailto:"):
                     continue
 
-                full_url = urljoin(base_url, href)
+                full_url = unwrap_url_sync(urljoin(base_url, href))
 
                 # Skip links that point back to the same page or are clearly not articles
                 if full_url in seen or full_url == base_url:
@@ -184,22 +190,35 @@ class WebFetcher(BaseFetcher):
             logger.debug("article_fetch_failed", url=url, error=str(e))
             return None
 
-        soup = BeautifulSoup(html, "lxml")
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            tag.decompose()
+        # --- Primary: Trafilatura (cleaner extraction, less noise) ---
+        article_text = trafilatura.extract(
+            html,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+            favor_recall=True,
+        )
 
-        # Extract article content
-        article_text = ""
-        for selector in ["article", "main", "[role='main']", ".post-content", ".entry-content", ".article-body"]:
-            elements = soup.select(selector)
-            if elements:
-                article_text = "\n\n".join(el.get_text(separator="\n", strip=True) for el in elements)
-                break
+        extraction_method = "trafilatura"
 
-        if not article_text:
-            body = soup.find("body")
-            if body:
-                article_text = body.get_text(separator="\n", strip=True)
+        # --- Fallback: BeautifulSoup heuristics ---
+        if not article_text or len(article_text) < 100:
+            extraction_method = "beautifulsoup"
+            soup = BeautifulSoup(html, "lxml")
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+
+            article_text = ""
+            for selector in ["article", "main", "[role='main']", ".post-content", ".entry-content", ".article-body"]:
+                elements = soup.select(selector)
+                if elements:
+                    article_text = "\n\n".join(el.get_text(separator="\n", strip=True) for el in elements)
+                    break
+
+            if not article_text:
+                body = soup.find("body")
+                if body:
+                    article_text = body.get_text(separator="\n", strip=True)
 
         if not article_text or len(article_text) < 50:
             return None
@@ -208,9 +227,13 @@ class WebFetcher(BaseFetcher):
         if len(article_text) > 3000:
             article_text = article_text[:3000] + "..."
 
+        # Extract metadata from HTML
+        soup = BeautifulSoup(html, "lxml") if extraction_method == "trafilatura" else soup
         title = soup.title.string.strip() if soup.title and soup.title.string else ""
         pub_date = self._extract_publish_date(soup)
         date_line = f"\nPublished: {pub_date}" if pub_date else ""
+
+        logger.debug("article_extracted", url=url, method=extraction_method, chars=len(article_text))
 
         return (
             f"## {title}\n"
@@ -246,8 +269,19 @@ class WebFetcher(BaseFetcher):
 
         return None
 
-    def _extract_main_content(self, soup: BeautifulSoup) -> str:
-        """Extract main content from the page, preferring article/main tags."""
+    def _extract_main_content(self, html: str, soup: BeautifulSoup) -> str:
+        """Extract main content — trafilatura first, BS4 fallback."""
+        text = trafilatura.extract(
+            html,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+            favor_recall=True,
+        )
+        if text and len(text) >= 100:
+            return text
+
+        # BS4 fallback
         for selector in ["article", "main", "[role='main']", ".content", "#content", ".post"]:
             elements = soup.select(selector)
             if elements:

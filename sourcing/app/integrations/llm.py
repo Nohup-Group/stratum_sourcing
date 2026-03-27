@@ -29,39 +29,92 @@ async def call_llm(
     max_tokens: int = 4096,
     temperature: float = 0.2,
     model: str | None = None,
+    caller: str = "unknown",
 ) -> str:
     """Route LLM call to the best available provider."""
     model = model or settings.llm_model
+    prompt_chars = len(prompt)
+    system_chars = len(system)
+    t0 = time.monotonic()
+
+    logger.info(
+        "llm_request",
+        caller=caller,
+        model=model,
+        prompt_chars=prompt_chars,
+        system_chars=system_chars,
+        max_tokens=max_tokens,
+        system_preview=system[:200] if system else "",
+        prompt_preview=prompt[:300],
+    )
+
+    tried: list[str] = []
 
     # 1. OpenClaw gateway (production path -- same as ncf-dataroom)
     if settings.openclaw_gateway_url or settings.openclaw_internal_port:
+        tried.append("openclaw")
         try:
-            return await _call_openclaw(prompt, system, max_tokens, temperature, model)
+            text = await _call_openclaw(prompt, system, max_tokens, temperature, model)
+            _log_response("openclaw", model, text, t0, caller, tried, prompt_chars)
+            return text
         except Exception as e:
-            logger.warning("openclaw_unavailable", error=str(e))
+            logger.warning("llm_provider_failed", provider="openclaw", caller=caller, error=str(e))
 
     # 2. Codex Responses API (local dev fallback -- direct streaming via OAuth minter)
     if settings.oauth_minter_url and settings.oauth_minter_key:
+        tried.append("codex")
         try:
-            return await _call_codex(prompt, system, max_tokens, temperature, model)
+            text = await _call_codex(prompt, system, max_tokens, temperature, model)
+            _log_response("codex", model, text, t0, caller, tried, prompt_chars)
+            return text
         except Exception as e:
-            logger.warning("codex_unavailable", error=str(e))
+            logger.warning("llm_provider_failed", provider="codex", caller=caller, error=str(e))
 
     # 3. Anthropic API (direct)
     if settings.anthropic_api_key:
+        tried.append("anthropic")
         try:
-            return await _call_anthropic(prompt, system, max_tokens, temperature, model)
+            text = await _call_anthropic(prompt, system, max_tokens, temperature, model)
+            _log_response("anthropic", model, text, t0, caller, tried, prompt_chars)
+            return text
         except Exception as e:
-            logger.warning("anthropic_unavailable", error=str(e))
+            logger.warning("llm_provider_failed", provider="anthropic", caller=caller, error=str(e))
 
     # 4. OpenAI API (direct, with API key)
     if settings.openai_api_key:
-        return await _call_openai_direct(prompt, system, max_tokens, temperature, model)
+        tried.append("openai")
+        text = await _call_openai_direct(prompt, system, max_tokens, temperature, model)
+        _log_response("openai", model, text, t0, caller, tried, prompt_chars)
+        return text
 
     raise RuntimeError(
         "No LLM provider available. Configure one of: "
         "OAUTH_MINTER_URL+KEY (Codex), OPENCLAW_GATEWAY_URL, "
         "ANTHROPIC_API_KEY, or OPENAI_API_KEY."
+    )
+
+
+def _log_response(
+    provider: str,
+    model: str,
+    text: str,
+    t0: float,
+    caller: str,
+    tried: list[str],
+    prompt_chars: int,
+) -> None:
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    logger.info(
+        "llm_response",
+        caller=caller,
+        provider=provider,
+        model=model,
+        prompt_chars=prompt_chars,
+        response_chars=len(text),
+        elapsed_ms=elapsed_ms,
+        tried=tried,
+        fallback=len(tried) > 1,
+        response_preview=text[:500],
     )
 
 
@@ -132,7 +185,7 @@ async def _call_codex(
                     pass
 
     text = "".join(collected).strip()
-    logger.debug("llm_call", provider="codex", model=codex_model, chars=len(text))
+    logger.info("llm_provider_detail", provider="codex", model=codex_model, response_chars=len(text))
     return text
 
 
@@ -223,7 +276,7 @@ async def _call_openclaw(
                     break
 
     text = "".join(collected_text).strip()
-    logger.debug("llm_call", provider="openclaw", model=model, chars=len(text))
+    logger.info("llm_provider_detail", provider="openclaw", model=model, response_chars=len(text))
     return text
 
 
@@ -245,9 +298,10 @@ async def _call_anthropic(
         messages=[{"role": "user", "content": prompt}],
     )
     text = response.content[0].text
-    logger.debug(
-        "llm_call", provider="anthropic", model=model,
+    logger.info(
+        "llm_provider_detail", provider="anthropic", model=model,
         input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens,
+        response_chars=len(text),
     )
     return text
 
@@ -255,28 +309,40 @@ async def _call_anthropic(
 # --- Direct OpenAI API (with API key, not OAuth) ---
 
 
+def _openai_model(model: str) -> str:
+    """Map Codex/internal model names to the cheapest OpenAI API-compatible variant."""
+    if model.startswith("gpt-5") or "codex" in model:
+        return "gpt-5.4-mini"
+    return model
+
+
 async def _call_openai_direct(
     prompt: str, system: str, max_tokens: int, temperature: float, model: str
 ) -> str:
     """Call OpenAI API with a standard API key."""
+    model = _openai_model(model)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    # gpt-5.x models require max_completion_tokens instead of max_tokens
+    token_param = "max_completion_tokens" if model.startswith("gpt-5") else "max_tokens"
+
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-            json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+            json={"model": model, "messages": messages, token_param: max_tokens, "temperature": temperature},
         )
         resp.raise_for_status()
         data = resp.json()
 
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage", {})
-    logger.debug(
-        "llm_call", provider="openai", model=model,
+    logger.info(
+        "llm_provider_detail", provider="openai", model=model,
         input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens"),
+        response_chars=len(text),
     )
     return text
