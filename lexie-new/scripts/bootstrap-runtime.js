@@ -197,38 +197,9 @@ async function patchOpenClawConfig() {
   defaults.workspace = WORKSPACE_ROOT;
   defaults.thinkingDefault = "high";
 
-  // Clean up stale key from prior broken deploy (agents.investor is invalid;
-  // OpenClaw expects agents.list[] instead).
+  // Clean up stale keys from prior broken deploys
   delete agents.investor;
-
-  // --- Multi-agent: main (internal) + investor (restricted) ---
-  const INVESTOR_AGENT_DIR = path.join(STATE_ROOT, "agents", "investor", "agent");
-  if (!Array.isArray(agents.list)) {
-    agents.list = [];
-  }
-  const mainEntry = agents.list.find((a) => a.id === "main");
-  if (!mainEntry) {
-    agents.list.push({
-      id: "main",
-      default: true,
-      name: "Lexie",
-      workspace: WORKSPACE_ROOT,
-    });
-  } else {
-    mainEntry.workspace = WORKSPACE_ROOT;
-  }
-  const investorEntry = agents.list.find((a) => a.id === "investor");
-  if (!investorEntry) {
-    agents.list.push({
-      id: "investor",
-      name: "Lexie Investor",
-      workspace: INVESTOR_WORKSPACE_ROOT,
-      agentDir: INVESTOR_AGENT_DIR,
-    });
-  } else {
-    investorEntry.workspace = INVESTOR_WORKSPACE_ROOT;
-    investorEntry.agentDir = INVESTOR_AGENT_DIR;
-  }
+  delete agents.list;
 
   // --- Model: openai-direct (OPENAI_API_KEY) as primary, codex as fallback ---
   const models = ensureObject(config, "models");
@@ -300,7 +271,6 @@ async function patchOpenClawConfig() {
     skillLoad.extraDirs = [];
   }
   appendUnique(skillLoad.extraDirs, TARGET_SKILLS_DIR);
-  appendUnique(skillLoad.extraDirs, TARGET_INVESTOR_SKILLS_DIR);
   if (typeof skillLoad.watch !== "boolean") {
     skillLoad.watch = true;
   }

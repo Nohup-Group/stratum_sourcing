@@ -40,7 +40,6 @@ const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
 const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
-const INVESTOR_AGENT_ID = "investor";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const LEXIE_OPS_TOKEN = process.env.LEXIE_OPS_TOKEN || "";
 const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
@@ -792,11 +791,10 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const agentId = investor ? INVESTOR_AGENT_ID : OPENCLAW_AGENT_ID;
       const created = await createSession(sessionPool, {
         clientId,
         name: body.name || DEFAULT_SESSION_NAME,
-        agentId,
+        agentId: OPENCLAW_AGENT_ID,
       });
       sendJson(response, 201, created);
       return true;
