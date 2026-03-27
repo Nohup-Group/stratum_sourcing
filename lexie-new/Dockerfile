@@ -65,9 +65,10 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY server.js ops-gateway.js session-store.js entrypoint.sh README.md railway.toml ./
+COPY server.js ops-gateway.js session-store.js auth.js entrypoint.sh README.md railway.toml ./
 COPY scripts/ /app/scripts/
 COPY workspace/ /app/workspace/
+COPY workspace-investor/ /app/workspace-investor/
 
 RUN mkdir -p /app /data \
     && chmod +x /app/entrypoint.sh \

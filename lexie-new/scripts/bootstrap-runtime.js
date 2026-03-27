@@ -13,9 +13,13 @@ const STATE_ROOT =
   process.env.OPENCLAW_STATE_DIR || path.join(DATA_ROOT, ".openclaw");
 
 const SOURCE_WORKSPACE = path.join(APP_ROOT, "workspace");
+const SOURCE_INVESTOR_WORKSPACE = path.join(APP_ROOT, "workspace-investor");
+const INVESTOR_WORKSPACE_ROOT = path.join(DATA_ROOT, "workspace-investor");
 const CONFIG_PATH = path.join(STATE_ROOT, "openclaw.json");
 const TARGET_SKILLS_DIR = path.join(WORKSPACE_ROOT, "skills");
 const TARGET_KNOWLEDGE_DIR = path.join(WORKSPACE_ROOT, "knowledge");
+const TARGET_INVESTOR_SKILLS_DIR = path.join(INVESTOR_WORKSPACE_ROOT, "skills");
+const TARGET_INVESTOR_KNOWLEDGE_DIR = path.join(INVESTOR_WORKSPACE_ROOT, "knowledge");
 const ROOT_FILES = [
   "AGENTS.md",
   "SOUL.md",
@@ -136,6 +140,35 @@ async function syncWorkspace() {
   }
 }
 
+const INVESTOR_ROOT_FILES = [
+  "AGENTS.md",
+  "SOUL.md",
+  "IDENTITY.md",
+  "TOOLS.md",
+  "MEMORY.md",
+];
+const INVESTOR_MANAGED_DIRS = ["knowledge", "skills"];
+
+async function syncInvestorWorkspace() {
+  if (!(await pathExists(SOURCE_INVESTOR_WORKSPACE))) {
+    return;
+  }
+
+  for (const fileName of INVESTOR_ROOT_FILES) {
+    const src = path.join(SOURCE_INVESTOR_WORKSPACE, fileName);
+    if (await pathExists(src)) {
+      await copyManagedFile(src, path.join(INVESTOR_WORKSPACE_ROOT, fileName));
+    }
+  }
+
+  for (const dirName of INVESTOR_MANAGED_DIRS) {
+    const src = path.join(SOURCE_INVESTOR_WORKSPACE, dirName);
+    if (await pathExists(src)) {
+      await copyManagedDir(src, path.join(INVESTOR_WORKSPACE_ROOT, dirName));
+    }
+  }
+}
+
 async function patchOpenClawConfig() {
   const config = await readJsonSafe(CONFIG_PATH, {});
   const agents = ensureObject(config, "agents");
@@ -163,6 +196,10 @@ async function patchOpenClawConfig() {
 
   defaults.workspace = WORKSPACE_ROOT;
   defaults.thinkingDefault = "high";
+
+  // --- Investor agent: separate workspace, same model, no internal tools ---
+  const investor = ensureObject(agents, "investor");
+  investor.workspace = INVESTOR_WORKSPACE_ROOT;
 
   // --- Model: openai-direct (OPENAI_API_KEY) as primary, codex as fallback ---
   const models = ensureObject(config, "models");
@@ -234,6 +271,7 @@ async function patchOpenClawConfig() {
     skillLoad.extraDirs = [];
   }
   appendUnique(skillLoad.extraDirs, TARGET_SKILLS_DIR);
+  appendUnique(skillLoad.extraDirs, TARGET_INVESTOR_SKILLS_DIR);
   if (typeof skillLoad.watch !== "boolean") {
     skillLoad.watch = true;
   }
@@ -244,11 +282,15 @@ async function patchOpenClawConfig() {
 
 async function main() {
   await ensureDir(WORKSPACE_ROOT);
+  await ensureDir(INVESTOR_WORKSPACE_ROOT);
   await ensureDir(STATE_ROOT);
   await ensureDir(TARGET_SKILLS_DIR);
   await ensureDir(TARGET_KNOWLEDGE_DIR);
+  await ensureDir(TARGET_INVESTOR_SKILLS_DIR);
+  await ensureDir(TARGET_INVESTOR_KNOWLEDGE_DIR);
 
   await syncWorkspace();
+  await syncInvestorWorkspace();
   await patchOpenClawConfig();
   await generateBackfill({
     workspaceRoot: WORKSPACE_ROOT,

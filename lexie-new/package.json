@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "lint": "node --check server.js && node --check session-store.js && node --check ops-gateway.js",
+    "lint": "node --check server.js && node --check session-store.js && node --check ops-gateway.js && node --check auth.js",
     "test": "node --test"
   },
   "dependencies": {

@@ -17,6 +17,17 @@ const {
   touchSession,
   updateSession,
 } = require("./session-store");
+const {
+  ensureAuthTables,
+  createInvite,
+  listInvites,
+  revokeInvite,
+  redeemInvite,
+  verifySession,
+  getInvestorJwt,
+  setInvestorCookie,
+  clearInvestorCookie,
+} = require("./auth");
 
 const PORT = parseInteger(process.env.PORT, 8080);
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST || "127.0.0.1";
@@ -29,6 +40,7 @@ const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || "/data/.openclaw";
 const OPENCLAW_WORKSPACE_DIR =
   process.env.OPENCLAW_WORKSPACE_DIR || "/data/workspace";
 const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
+const INVESTOR_AGENT_ID = "investor";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const LEXIE_OPS_TOKEN = process.env.LEXIE_OPS_TOKEN || "";
 const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
@@ -86,6 +98,7 @@ async function ensureSessionStore() {
 
   try {
     await ensureChatSessionsTable(pool);
+    await ensureAuthTables(pool);
     sessionStoreReady = true;
     sessionStoreError = null;
     log("session store ready");
@@ -318,7 +331,21 @@ function proxyUpgradeRequest(request, socket, head) {
   }
 
   const requestUrl = new URL(request.url, "http://127.0.0.1");
-  const forwardedUser = normalizeClientId(requestUrl.searchParams.get("client_id"));
+
+  // Resolve user: investor cookie takes priority, then query param client_id
+  let forwardedUser = null;
+  const investorJwt = getInvestorJwt(request);
+  if (investorJwt) {
+    // Synchronous JWT verify (no DB check) for WebSocket upgrade hot path
+    const { verifyJwt } = require("./auth");
+    const payload = verifyJwt(investorJwt);
+    if (payload && payload.sub) {
+      forwardedUser = investorClientId(payload.sub);
+    }
+  }
+  if (!forwardedUser) {
+    forwardedUser = normalizeClientId(requestUrl.searchParams.get("client_id"));
+  }
   requestUrl.searchParams.delete("client_id");
   const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
 
@@ -385,6 +412,10 @@ function clientAddress(request) {
 }
 
 function resolveForwardedUser(request) {
+  // Investor cookie-derived client ID is set by the auth middleware.
+  if (request._investorClientId) {
+    return request._investorClientId;
+  }
   const clientId = normalizeClientId(request.headers["x-lexie-client-id"]);
   return clientId || "";
 }
@@ -443,6 +474,21 @@ function resolveClientId(request) {
   return normalizeClientId(request.headers["x-lexie-client-id"]);
 }
 
+function investorClientId(inviteId) {
+  return `investor_${inviteId.replace(/-/g, "").slice(0, 16)}`;
+}
+
+async function resolveInvestor(request) {
+  if (!pool || !sessionStoreReady) {
+    return null;
+  }
+  const jwt = getInvestorJwt(request);
+  if (!jwt) {
+    return null;
+  }
+  return verifySession(pool, jwt);
+}
+
 async function getSessionPool(response) {
   if (!pool) {
     sendApiError(response, 500, "DATABASE_URL is not configured");
@@ -489,8 +535,172 @@ function buildChatCapabilities() {
   };
 }
 
+async function handleInviteRedeem(request, response) {
+  const requestUrl = new URL(request.url, "http://127.0.0.1");
+  const inviteMatch = requestUrl.pathname.match(/^\/auth\/invite\/([a-f0-9]{64})$/);
+  if (!inviteMatch) {
+    return false;
+  }
+
+  if (request.method !== "GET") {
+    sendApiError(response, 405, "Method not allowed");
+    return true;
+  }
+
+  const sessionPool = await getSessionPool(response);
+  if (!sessionPool) {
+    return true;
+  }
+
+  const result = await redeemInvite(sessionPool, inviteMatch[1]);
+  if (result.error) {
+    const messages = {
+      not_found: "Invite not found",
+      revoked: "This invite has been revoked",
+      expired: "This invite has expired",
+    };
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!DOCTYPE html><html><body><h1>${messages[result.error] || "Invalid invite"}</h1><p>Please contact Stratum 3 Ventures for a new invite link.</p></body></html>`);
+    return true;
+  }
+
+  setInvestorCookie(response, result.jwt, result.expiresAt);
+  response.writeHead(302, { location: "/" });
+  response.end();
+  return true;
+}
+
 async function handleApiRequest(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
+
+  // --- Resolve investor identity from cookie (non-blocking) ---
+  const investor = await resolveInvestor(request);
+  if (investor) {
+    request._investorClientId = investorClientId(investor.inviteId);
+  }
+
+  // --- Auth routes ---
+  if (requestUrl.pathname === "/api/auth/me") {
+    if (request.method !== "GET") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+
+    if (investor) {
+      sendJson(response, 200, {
+        type: "investor",
+        name: investor.name,
+        inviteId: investor.inviteId,
+      });
+      return true;
+    }
+
+    const clientId = resolveClientId(request);
+    if (clientId) {
+      sendJson(response, 200, { type: "internal" });
+      return true;
+    }
+
+    sendApiError(response, 401, "Not authenticated");
+    return true;
+  }
+
+  if (requestUrl.pathname === "/api/auth/logout") {
+    if (request.method !== "POST") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+
+    if (investor && pool) {
+      try {
+        await pool.query(
+          `UPDATE investor_sessions SET revoked_at = NOW() WHERE id = $1`,
+          [investor.sessionId],
+        );
+      } catch (error) {
+        logError(`logout session revoke failed: ${error.message}`);
+      }
+    }
+
+    clearInvestorCookie(response);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  // --- Admin routes (ops token protected) ---
+  if (requestUrl.pathname === "/api/admin/invites") {
+    const auth = verifyOpsToken(request);
+    if (!auth.ok) {
+      sendApiError(response, auth.statusCode, auth.message);
+      return true;
+    }
+
+    const sessionPool = await getSessionPool(response);
+    if (!sessionPool) {
+      return true;
+    }
+
+    if (request.method === "GET") {
+      const invites = await listInvites(sessionPool);
+      sendJson(response, 200, invites);
+      return true;
+    }
+
+    if (request.method === "POST") {
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        sendApiError(response, 400, error.message || "Invalid JSON body");
+        return true;
+      }
+
+      if (!body.investorName) {
+        sendApiError(response, 400, "investorName is required");
+        return true;
+      }
+
+      const invite = await createInvite(sessionPool, {
+        investorName: body.investorName,
+        investorEmail: body.investorEmail,
+        expiresInDays: body.expiresInDays,
+      });
+
+      const host = request.headers.host || "localhost";
+      const protocol = request.headers["x-forwarded-proto"] || "https";
+      sendJson(response, 201, {
+        ...invite,
+        inviteUrl: `${protocol}://${host}/auth/invite/${invite.token}`,
+      });
+      return true;
+    }
+
+    sendApiError(response, 405, "Method not allowed");
+    return true;
+  }
+
+  const adminInviteMatch = requestUrl.pathname.match(/^\/api\/admin\/invites\/([^/]+)$/);
+  if (adminInviteMatch) {
+    const auth = verifyOpsToken(request);
+    if (!auth.ok) {
+      sendApiError(response, auth.statusCode, auth.message);
+      return true;
+    }
+
+    if (request.method !== "DELETE") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+
+    const sessionPool = await getSessionPool(response);
+    if (!sessionPool) {
+      return true;
+    }
+
+    await revokeInvite(sessionPool, adminInviteMatch[1]);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/agent/chat-capabilities") {
     sendJson(response, 200, buildChatCapabilities());
@@ -545,7 +755,9 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === "/api/sessions") {
-    const clientId = resolveClientId(request);
+    const clientId = investor
+      ? investorClientId(investor.inviteId)
+      : resolveClientId(request);
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
@@ -580,10 +792,11 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
+      const agentId = investor ? INVESTOR_AGENT_ID : OPENCLAW_AGENT_ID;
       const created = await createSession(sessionPool, {
         clientId,
         name: body.name || DEFAULT_SESSION_NAME,
-        agentId: OPENCLAW_AGENT_ID,
+        agentId,
       });
       sendJson(response, 201, created);
       return true;
@@ -600,7 +813,9 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
-    const clientId = resolveClientId(request);
+    const clientId = investor
+      ? investorClientId(investor.inviteId)
+      : resolveClientId(request);
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
@@ -626,7 +841,9 @@ async function handleApiRequest(request, response) {
 
   const sessionMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (sessionMatch) {
-    const clientId = resolveClientId(request);
+    const clientId = investor
+      ? investorClientId(investor.inviteId)
+      : resolveClientId(request);
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
@@ -711,7 +928,11 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  Promise.resolve(handleApiRequest(request, response))
+  Promise.resolve(handleInviteRedeem(request, response))
+    .then((handled) => {
+      if (handled) return true;
+      return handleApiRequest(request, response);
+    })
     .then((handled) => {
       if (!handled) {
         proxyHttpRequest(request, response);
