@@ -59,6 +59,9 @@ export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
 
 node /app/scripts/bootstrap-runtime.js
 
+# Clean up any invalid config keys left by prior deploys
+openclaw doctor --fix 2>/dev/null || true
+
 # Set openai-direct as primary model (uses OPENAI_API_KEY, not Codex OAuth)
 openclaw config set agents.defaults.model.primary "openai-direct/gpt-5.4" 2>/dev/null || true
 openclaw config set agents.defaults.model.fallbacks '["openai-codex/gpt-5.4"]' 2>/dev/null || true
