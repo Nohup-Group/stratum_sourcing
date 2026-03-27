@@ -197,9 +197,38 @@ async function patchOpenClawConfig() {
   defaults.workspace = WORKSPACE_ROOT;
   defaults.thinkingDefault = "high";
 
-  // --- Investor agent: separate workspace, same model, no internal tools ---
-  const investor = ensureObject(agents, "investor");
-  investor.workspace = INVESTOR_WORKSPACE_ROOT;
+  // Clean up stale key from prior broken deploy (agents.investor is invalid;
+  // OpenClaw expects agents.list[] instead).
+  delete agents.investor;
+
+  // --- Multi-agent: main (internal) + investor (restricted) ---
+  const INVESTOR_AGENT_DIR = path.join(STATE_ROOT, "agents", "investor", "agent");
+  if (!Array.isArray(agents.list)) {
+    agents.list = [];
+  }
+  const mainEntry = agents.list.find((a) => a.id === "main");
+  if (!mainEntry) {
+    agents.list.push({
+      id: "main",
+      default: true,
+      name: "Lexie",
+      workspace: WORKSPACE_ROOT,
+    });
+  } else {
+    mainEntry.workspace = WORKSPACE_ROOT;
+  }
+  const investorEntry = agents.list.find((a) => a.id === "investor");
+  if (!investorEntry) {
+    agents.list.push({
+      id: "investor",
+      name: "Lexie Investor",
+      workspace: INVESTOR_WORKSPACE_ROOT,
+      agentDir: INVESTOR_AGENT_DIR,
+    });
+  } else {
+    investorEntry.workspace = INVESTOR_WORKSPACE_ROOT;
+    investorEntry.agentDir = INVESTOR_AGENT_DIR;
+  }
 
   // --- Model: openai-direct (OPENAI_API_KEY) as primary, codex as fallback ---
   const models = ensureObject(config, "models");
@@ -288,6 +317,7 @@ async function main() {
   await ensureDir(TARGET_KNOWLEDGE_DIR);
   await ensureDir(TARGET_INVESTOR_SKILLS_DIR);
   await ensureDir(TARGET_INVESTOR_KNOWLEDGE_DIR);
+  await ensureDir(path.join(STATE_ROOT, "agents", "investor", "agent"));
 
   await syncWorkspace();
   await syncInvestorWorkspace();
