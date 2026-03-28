@@ -537,7 +537,7 @@ function buildChatCapabilities() {
 
 async function handleInviteRedeem(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
-  const inviteMatch = requestUrl.pathname.match(/^\/auth\/invite\/([a-f0-9]{64})$/);
+  const inviteMatch = requestUrl.pathname.match(/^\/(?:api\/)?auth\/invite\/([a-f0-9]{64})$/);
   if (!inviteMatch) {
     return false;
   }
@@ -565,7 +565,9 @@ async function handleInviteRedeem(request, response) {
   }
 
   setInvestorCookie(response, result.jwt, result.expiresAt);
-  response.writeHead(302, { location: "/" });
+  const frontendUrl = process.env.RAILWAY_SERVICE_LEXIE_NEW_FRONTEND_URL;
+  const redirectTo = frontendUrl ? `https://${frontendUrl}` : "/";
+  response.writeHead(302, { location: redirectTo });
   response.end();
   return true;
 }
@@ -666,11 +668,12 @@ async function handleApiRequest(request, response) {
         expiresInDays: body.expiresInDays,
       });
 
-      const host = request.headers.host || "localhost";
-      const protocol = request.headers["x-forwarded-proto"] || "https";
+      const frontendHost = process.env.RAILWAY_SERVICE_LEXIE_NEW_FRONTEND_URL;
+      const host = frontendHost || request.headers.host || "localhost";
+      const protocol = frontendHost ? "https" : (request.headers["x-forwarded-proto"] || "https");
       sendJson(response, 201, {
         ...invite,
-        inviteUrl: `${protocol}://${host}/auth/invite/${invite.token}`,
+        inviteUrl: `${protocol}://${host}/api/auth/invite/${invite.token}`,
       });
       return true;
     }
