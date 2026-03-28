@@ -57,12 +57,8 @@ fi
 eval "${keyring_output}"
 export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
 
-# Remove stale invalid keys from config (jq is available in the image)
-OPENCLAW_CONFIG="${OPENCLAW_STATE_DIR}/openclaw.json"
-if [[ -f "${OPENCLAW_CONFIG}" ]] && jq -e '.agents.investor' "${OPENCLAW_CONFIG}" >/dev/null 2>&1; then
-  jq 'del(.agents.investor, .agents.list)' "${OPENCLAW_CONFIG}" > "${OPENCLAW_CONFIG}.tmp" \
-    && mv "${OPENCLAW_CONFIG}.tmp" "${OPENCLAW_CONFIG}"
-fi
+# Remove persisted config — bootstrap rewrites it completely on every start
+rm -f "${OPENCLAW_STATE_DIR}/openclaw.json"
 
 node /app/scripts/bootstrap-runtime.js
 
