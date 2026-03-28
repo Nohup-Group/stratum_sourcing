@@ -57,10 +57,14 @@ fi
 eval "${keyring_output}"
 export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
 
-node /app/scripts/bootstrap-runtime.js
+# Remove stale invalid keys from config (jq is available in the image)
+OPENCLAW_CONFIG="${OPENCLAW_STATE_DIR}/openclaw.json"
+if [[ -f "${OPENCLAW_CONFIG}" ]] && jq -e '.agents.investor' "${OPENCLAW_CONFIG}" >/dev/null 2>&1; then
+  jq 'del(.agents.investor, .agents.list)' "${OPENCLAW_CONFIG}" > "${OPENCLAW_CONFIG}.tmp" \
+    && mv "${OPENCLAW_CONFIG}.tmp" "${OPENCLAW_CONFIG}"
+fi
 
-# Clean up any invalid config keys left by prior deploys
-openclaw doctor --fix 2>/dev/null || true
+node /app/scripts/bootstrap-runtime.js
 
 # Set openai-direct as primary model (uses OPENAI_API_KEY, not Codex OAuth)
 openclaw config set agents.defaults.model.primary "openai-direct/gpt-5.4" 2>/dev/null || true
