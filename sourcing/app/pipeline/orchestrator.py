@@ -128,6 +128,17 @@ async def run_scan(
         failed=len(errors),
         findings=findings_count,
     )
+
+    # Trigger Notion sync on-demand if new findings were produced
+    if findings_count > 0:
+        try:
+            from app.integrations.notion_sync import sync_findings_to_notion
+
+            synced = await sync_findings_to_notion()
+            logger.info("notion_sync_after_scan", synced=synced, run_id=run_id)
+        except Exception as e:
+            logger.warning("notion_sync_after_scan_failed", error=str(e), run_id=run_id)
+
     return run_id
 
 
