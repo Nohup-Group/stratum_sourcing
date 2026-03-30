@@ -411,7 +411,7 @@ async function patchOpenClawConfig() {
 
   const stableGatewayToken = ensureGatewayToken(gatewayAuth.token || gatewayRemote.token);
   gatewayAuth.mode = "trusted-proxy";
-  gatewayAuth.token = stableGatewayToken;
+  delete gatewayAuth.token;
   delete gatewayAuth.password;
   gatewayTrustedProxy.userHeader = "x-forwarded-user";
   gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
