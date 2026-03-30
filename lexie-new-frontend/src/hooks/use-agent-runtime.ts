@@ -18,6 +18,7 @@ import { useMessages } from "./use-messages";
 import { useSessions } from "./use-sessions";
 import type {
   AgentMessage,
+  AvailableAgent,
   ChatMessage,
   GatewayChatAttachment,
   MessageAttachmentMeta,
@@ -205,7 +206,11 @@ function getGatewayStatusMessage(params: {
   return "The gateway is currently unavailable.";
 }
 
-export function useAgentRuntime() {
+export function useAgentRuntime(params?: {
+  availableAgents?: AvailableAgent[];
+  defaultAgentId?: string | null;
+  userType?: "internal" | "investor" | null;
+}) {
   const {
     sessions,
     archivedSessions,
@@ -219,6 +224,10 @@ export function useAgentRuntime() {
     deleteSession,
     refreshSessions,
   } = useSessions();
+  const availableAgents = params?.availableAgents ?? [];
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(
+    params?.defaultAgentId ?? availableAgents[0]?.id ?? "main",
+  );
   const renameRequestedRef = useRef<Map<string, string>>(new Map());
   const [pendingSessionIds, setPendingSessionIds] = useState<string[]>([]);
   const [webSearchEnabledBySession, setWebSearchEnabledBySession] = useState<Record<string, boolean>>({});
@@ -247,6 +256,18 @@ export function useAgentRuntime() {
     () => normalizeGatewayConversation(historyQuery.data?.messages ?? []),
     [historyQuery.data],
   );
+
+  useEffect(() => {
+    if (currentSession?.agent_id) {
+      setSelectedAgentId(currentSession.agent_id);
+      return;
+    }
+
+    const fallbackAgentId = params?.defaultAgentId ?? availableAgents[0]?.id ?? "main";
+    if (!availableAgents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(fallbackAgentId);
+    }
+  }, [availableAgents, currentSession?.agent_id, params?.defaultAgentId, selectedAgentId]);
 
   const {
     messages,
@@ -374,7 +395,10 @@ export function useAgentRuntime() {
 
       let session = currentSession;
       if (!session) {
-        session = await createSession(buildSessionName(text, attachments));
+        session = await createSession(
+          buildSessionName(text, attachments),
+          params?.userType === "investor" ? "investor" : selectedAgentId,
+        );
       }
 
       addUserMessage({
@@ -447,12 +471,31 @@ export function useAgentRuntime() {
       currentSession,
       gatewayEnabled,
       historyMessages,
+      params?.userType,
       refreshCurrentHistory,
       refreshSessions,
+      selectedAgentId,
       sendMessage,
       setSessionPending,
     ],
   );
+
+  const handleSelectAgent = useCallback(
+    (agentId: string) => {
+      setSelectedAgentId(agentId);
+      if (currentSession?.agent_id && currentSession.agent_id !== agentId) {
+        selectSession(null);
+      }
+    },
+    [currentSession?.agent_id, selectSession],
+  );
+
+  const createBlankSession = useCallback(async () => {
+    await createSession(
+      DEFAULT_SESSION_NAME,
+      params?.userType === "investor" ? "investor" : selectedAgentId,
+    );
+  }, [createSession, params?.userType, selectedAgentId]);
 
   const handleCancel = useCallback(() => {
     cancelStream();
@@ -646,11 +689,14 @@ export function useAgentRuntime() {
     sessionActivityById,
     currentSession,
     currentSessionId,
-    createSession,
+    createSession: createBlankSession,
     deleteSession,
     selectSession,
     archiveSession,
     unarchiveSession,
+    availableAgents,
+    selectedAgentId,
+    selectAgent: handleSelectAgent,
     connectionError,
     chatCapabilities: chatCapabilitiesQuery.data ?? null,
     webSearchEnabled: currentSessionId ? (webSearchEnabledBySession[currentSessionId] ?? false) : false,

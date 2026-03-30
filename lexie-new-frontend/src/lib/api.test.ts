@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import {
   LEXIE_CLIENT_ID_HEADER,
   createSession,
+  createSessionForAgent,
   listSessions,
 } from "./api";
 import { resetBrowserClientIdForTests } from "./browser-client";
@@ -25,6 +26,7 @@ describe("api client", () => {
           id: "session-1",
           client_id: "client_1234567890abcdef",
           gateway_session_key: "agent:main:webchat:user:client_1234567890abcdef:session:session-1",
+          agent_id: "main",
           name: "New chat",
           status: "ACTIVE",
           created_at: "2026-03-16T11:00:00.000Z",
@@ -45,5 +47,33 @@ describe("api client", () => {
       const headers = new Headers(call[1]?.headers);
       expect(headers.get(LEXIE_CLIENT_ID_HEADER)).toMatch(/^client_[a-z0-9]{32}$/i);
     }
+  });
+
+  it("includes the selected agent id when creating a session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        id: "session-2",
+        client_id: "client_1234567890abcdef",
+        gateway_session_key: "agent:investor:webchat:user:client_1234567890abcdef:session:session-2",
+        agent_id: "investor",
+        name: "Data room",
+        status: "ACTIVE",
+        created_at: "2026-03-16T11:00:00.000Z",
+        updated_at: "2026-03-16T11:00:00.000Z",
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSessionForAgent("Data room", "investor");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ name: "Data room", agentId: "investor" }),
+      headers: expect.any(Headers),
+    });
   });
 });

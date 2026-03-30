@@ -6,8 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAgentRuntime } from "@/hooks/use-agent-runtime";
 import { useAuth } from "@/hooks/use-auth";
 import { useViewportKind } from "@/hooks/use-viewport-kind";
+import type { AvailableAgent } from "@/lib/types";
 
-function AuthenticatedApp() {
+function AuthenticatedApp(props: {
+  userType: "internal" | "investor";
+  availableAgents: AvailableAgent[];
+  defaultAgentId: string | null;
+}) {
   const {
     runtime,
     sessions,
@@ -22,7 +27,14 @@ function AuthenticatedApp() {
     unarchiveSession,
     connectionError,
     chatCapabilities,
-  } = useAgentRuntime();
+    availableAgents,
+    selectedAgentId,
+    selectAgent,
+  } = useAgentRuntime({
+    userType: props.userType,
+    availableAgents: props.availableAgents,
+    defaultAgentId: props.defaultAgentId,
+  });
   const viewportKind = useViewportKind();
 
   return (
@@ -41,6 +53,9 @@ function AuthenticatedApp() {
           onDeleteSession={deleteSession}
           onArchiveSession={archiveSession}
           onUnarchiveSession={unarchiveSession}
+          availableAgents={availableAgents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={selectAgent}
         >
           {({ openSidebar }) => (
             <ChatArea
@@ -59,7 +74,13 @@ function AuthenticatedApp() {
 }
 
 export default function App() {
-  const { isLoading, isAuthenticated } = useAuth();
+  const {
+    isLoading,
+    isAuthenticated,
+    userType,
+    availableAgents,
+    defaultAgentId,
+  } = useAuth();
 
   if (isLoading) {
     return (
@@ -73,5 +94,11 @@ export default function App() {
     return <InviteGate />;
   }
 
-  return <AuthenticatedApp />;
+  return (
+    <AuthenticatedApp
+      userType={userType ?? "internal"}
+      availableAgents={availableAgents}
+      defaultAgentId={defaultAgentId}
+    />
+  );
 }

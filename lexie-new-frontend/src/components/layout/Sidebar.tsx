@@ -9,10 +9,17 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import type { Session } from "@/lib/types";
+import type { AvailableAgent, Session } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import ThemeToggle from "./ThemeToggle";
 
@@ -35,6 +42,9 @@ interface SidebarProps {
   onDeleteSession: (id: string) => void | Promise<void>;
   onArchiveSession: (id: string) => void | Promise<void>;
   onUnarchiveSession: (id: string) => void | Promise<void>;
+  availableAgents: AvailableAgent[];
+  selectedAgentId: string | null;
+  onSelectAgent: (agentId: string) => void;
 }
 
 function SessionRow(props: {
@@ -144,6 +154,9 @@ export default function Sidebar({
   onDeleteSession,
   onArchiveSession,
   onUnarchiveSession,
+  availableAgents,
+  selectedAgentId,
+  onSelectAgent,
 }: SidebarProps) {
   const [archiveOpen, setArchiveOpen] = useState(false);
 
@@ -195,6 +208,29 @@ export default function Sidebar({
           <Plus size={16} />
           New chat
         </Button>
+
+        {availableAgents.length > 1 && (
+          <div className="mt-4 space-y-2">
+            <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Agent
+            </div>
+            <Select
+              value={selectedAgentId ?? availableAgents[0]?.id}
+              onValueChange={onSelectAgent}
+            >
+              <SelectTrigger className="h-11 rounded-2xl border-border/70 bg-card/70">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableAgents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       <Separator />

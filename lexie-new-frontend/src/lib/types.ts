@@ -4,10 +4,17 @@ export type SessionStatus = "ACTIVE" | "ARCHIVED";
 export type OpenClawVerboseLevel = "off" | "on" | "full";
 export type OpenClawQueueMode = "collect" | "followup" | "steer";
 
+export interface AvailableAgent {
+  id: string;
+  name: string;
+  default?: boolean;
+}
+
 export interface Session {
   id: string;
   client_id: string;
   gateway_session_key: string;
+  agent_id: string;
   name: string;
   status: SessionStatus;
   created_at: string;

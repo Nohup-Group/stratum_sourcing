@@ -7,6 +7,7 @@ const SESSION_STATUS = {
   ARCHIVED: "ARCHIVED",
 };
 const VALID_CLIENT_ID = /^[a-zA-Z0-9_-]{16,128}$/;
+const GATEWAY_SESSION_KEY_PATTERN = /^agent:([^:]+):/;
 
 function normalizeClientId(value) {
   if (typeof value !== "string") {
@@ -43,6 +44,14 @@ function normalizeSessionName(value) {
 
 function buildGatewaySessionKey(sessionId, clientId, agentId = DEFAULT_AGENT_ID) {
   return `agent:${agentId}:webchat:user:${clientId}:session:${sessionId}`;
+}
+
+function parseAgentIdFromSessionKey(sessionKey) {
+  if (typeof sessionKey !== "string") {
+    return DEFAULT_AGENT_ID;
+  }
+  const match = sessionKey.match(GATEWAY_SESSION_KEY_PATTERN);
+  return match && match[1] ? match[1] : DEFAULT_AGENT_ID;
 }
 
 function splitAllowedOrigins(value) {
@@ -102,6 +111,7 @@ function mapSessionRow(row) {
     id: row.id,
     client_id: row.client_id,
     gateway_session_key: row.gateway_session_key,
+    agent_id: parseAgentIdFromSessionKey(row.gateway_session_key),
     name: row.name,
     status: row.status,
     created_at: row.created_at,
@@ -208,6 +218,7 @@ module.exports = {
   normalizeClientId,
   normalizeSessionName,
   normalizeSessionStatus,
+  parseAgentIdFromSessionKey,
   splitAllowedOrigins,
   touchSession,
   updateSession,

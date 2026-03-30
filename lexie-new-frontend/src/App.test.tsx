@@ -22,6 +22,9 @@ vi.mock("@/hooks/use-agent-runtime", () => ({
     selectSession: vi.fn(),
     archiveSession: vi.fn(),
     unarchiveSession: vi.fn(),
+    availableAgents: [{ id: "main", name: "Lexie", default: true }],
+    selectedAgentId: "main",
+    selectAgent: vi.fn(),
     connectionError: null,
     chatCapabilities: {
       gatewayReady: true,
@@ -66,6 +69,9 @@ describe("App", () => {
       isAuthenticated: false,
       userType: null,
       investorName: null,
+      email: null,
+      availableAgents: [],
+      defaultAgentId: null,
     });
 
     const queryClient = new QueryClient();
@@ -85,6 +91,9 @@ describe("App", () => {
       isAuthenticated: false,
       userType: null,
       investorName: null,
+      email: null,
+      availableAgents: [],
+      defaultAgentId: null,
     });
 
     const queryClient = new QueryClient();
@@ -104,6 +113,9 @@ describe("App", () => {
       isAuthenticated: true,
       userType: "internal",
       investorName: null,
+      email: "operator@nohup.group",
+      availableAgents: [{ id: "main", name: "Lexie", default: true }],
+      defaultAgentId: "main",
     });
 
     const queryClient = new QueryClient();

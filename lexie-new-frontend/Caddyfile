@@ -5,15 +5,12 @@
 		respond `{"status":"ok"}` 200
 	}
 
-	@openclaw_launch {
-		path /openclaw /openclaw/
-		header_regexp cf_email Cf-Access-Authenticated-User-Email (?i)^[^@]+@nohup\.group$
-	}
-		handle @openclaw_launch {
-			reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
-				rewrite /api/openclaw/control-ui/launch
-				header_up Authorization "Bearer {$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
-				header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+	@openclaw_launch path /openclaw /openclaw/
+	handle @openclaw_launch {
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
+			rewrite /api/openclaw/control-ui/launch
+			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+			header_up Cf-Access-Jwt-Assertion "{header.Cf-Access-Jwt-Assertion}"
 			header_up X-Forwarded-For "{remote_host}"
 			header_up X-Forwarded-Proto "{scheme}"
 			header_up X-Forwarded-Host "{host}"
@@ -27,12 +24,11 @@
 		path /openclaw/ui /openclaw/ui/
 		header Connection *Upgrade*
 		header Upgrade websocket
-		header_regexp cf_email Cf-Access-Authenticated-User-Email (?i)^[^@]+@nohup\.group$
 	}
-		handle @openclaw_ui_ws {
-			reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
-				header_up Authorization "Bearer {$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
-				header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+	handle @openclaw_ui_ws {
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
+			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+			header_up Cf-Access-Jwt-Assertion "{header.Cf-Access-Jwt-Assertion}"
 			header_up X-Forwarded-For "{remote_host}"
 			header_up X-Forwarded-Proto "{scheme}"
 			header_up X-Forwarded-Host "{host}"
@@ -42,14 +38,11 @@
 		}
 	}
 
-	@openclaw_ui {
-		path /openclaw/ui*
-		header_regexp cf_email Cf-Access-Authenticated-User-Email (?i)^[^@]+@nohup\.group$
-	}
-		handle @openclaw_ui {
-			reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
-				header_up Authorization "Bearer {$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
-				header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+	@openclaw_ui path /openclaw/ui*
+	handle @openclaw_ui {
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
+			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+			header_up Cf-Access-Jwt-Assertion "{header.Cf-Access-Jwt-Assertion}"
 			header_up X-Forwarded-For "{remote_host}"
 			header_up X-Forwarded-Proto "{scheme}"
 			header_up X-Forwarded-Host "{host}"
@@ -57,51 +50,18 @@
 			header_up X-Agent-User-Email "{header.Cf-Access-Authenticated-User-Email}"
 			header_up Cf-Access-Authenticated-User-Email "{header.Cf-Access-Authenticated-User-Email}"
 		}
-	}
-
-	@openclaw_forbidden path /openclaw /openclaw/ /openclaw/*
-	handle @openclaw_forbidden {
-		respond "forbidden" 403
 	}
 
 	@openclaw_ws {
 		path /api/openclaw/ws
 		header Connection *Upgrade*
 		header Upgrade websocket
-		header_regexp cf_email Cf-Access-Authenticated-User-Email (?i)^[^@]+@nohup\.group$
 	}
 	handle @openclaw_ws {
 		rewrite * /
 		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
-			header_up Authorization "Bearer {$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
 			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
-			header_up X-Forwarded-For "{remote_host}"
-			header_up X-Forwarded-Proto "{scheme}"
-			header_up X-Forwarded-Host "{host}"
-			header_up X-Forwarded-User "{header.Cf-Access-Authenticated-User-Email}"
-			header_up X-Agent-User-Email "{header.Cf-Access-Authenticated-User-Email}"
-			header_up Cf-Access-Authenticated-User-Email "{header.Cf-Access-Authenticated-User-Email}"
-		}
-	}
-
-	@openclaw_ws_public {
-		path /api/openclaw/ws
-		header Connection *Upgrade*
-		header Upgrade websocket
-	}
-	handle @openclaw_ws_public {
-		rewrite * /
-		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080}
-	}
-
-	@internal_api {
-		path /api/*
-		header_regexp cf_email Cf-Access-Authenticated-User-Email (?i)^[^@]+@nohup\.group$
-	}
-	handle @internal_api {
-		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
-			header_up Authorization "Bearer {$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
-			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+			header_up Cf-Access-Jwt-Assertion "{header.Cf-Access-Jwt-Assertion}"
 			header_up X-Forwarded-For "{remote_host}"
 			header_up X-Forwarded-Proto "{scheme}"
 			header_up X-Forwarded-Host "{host}"
@@ -112,7 +72,16 @@
 	}
 
 	handle /api/* {
-		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080}
+		reverse_proxy {$LEXIE_NEW_URL:http://lexie-new.railway.internal:8080} {
+			header_up X-OpenClaw-Control-Ui-Auth "{$OPENCLAW_CONTROL_UI_PROXY_TOKEN}"
+			header_up Cf-Access-Jwt-Assertion "{header.Cf-Access-Jwt-Assertion}"
+			header_up X-Forwarded-For "{remote_host}"
+			header_up X-Forwarded-Proto "{scheme}"
+			header_up X-Forwarded-Host "{host}"
+			header_up X-Forwarded-User "{header.Cf-Access-Authenticated-User-Email}"
+			header_up X-Agent-User-Email "{header.Cf-Access-Authenticated-User-Email}"
+			header_up Cf-Access-Authenticated-User-Email "{header.Cf-Access-Authenticated-User-Email}"
+		}
 	}
 
 	handle {

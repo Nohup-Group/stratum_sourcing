@@ -1,4 +1,8 @@
-const INTERNAL_EMAIL_DOMAIN = "@nohup.group";
+const DEFAULT_INTERNAL_EMAIL_DOMAINS = [
+  "@nohup.group",
+  "@stratum3ventures.com",
+  "@stratum3.org",
+];
 
 function getHeaders(input) {
   if (input && typeof input === "object" && input.headers && typeof input.headers === "object") {
@@ -61,22 +65,51 @@ function hasMatchingProxyToken(input, expectedToken) {
   return proxyHeader === token;
 }
 
-function isAllowedInternalEmail(email, domain = INTERNAL_EMAIL_DOMAIN) {
+function normalizeEmailDomain(value) {
+  const normalized = normalizeEmail(value);
+  if (!normalized) {
+    return "";
+  }
+  return normalized.startsWith("@") ? normalized : `@${normalized}`;
+}
+
+function parseAllowedInternalEmailDomains(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeEmailDomain(entry))
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => normalizeEmailDomain(entry))
+      .filter(Boolean);
+  }
+
+  return [...DEFAULT_INTERNAL_EMAIL_DOMAINS];
+}
+
+function isAllowedInternalEmail(email, domains = DEFAULT_INTERNAL_EMAIL_DOMAINS) {
   const normalizedEmail = normalizeEmail(email);
-  const normalizedDomain = normalizeEmail(domain);
-  return Boolean(normalizedEmail && normalizedDomain && normalizedEmail.endsWith(normalizedDomain));
+  const normalizedDomains = parseAllowedInternalEmailDomains(domains);
+  return Boolean(
+    normalizedEmail &&
+      normalizedDomains.some((domain) => normalizedEmail.endsWith(domain)),
+  );
 }
 
 function resolveTrustedInternalUser(input, options = {}) {
   const proxyToken = options.proxyToken || "";
-  const allowedEmailDomain = options.allowedEmailDomain || INTERNAL_EMAIL_DOMAIN;
+  const allowedEmailDomains =
+    options.allowedEmailDomains || options.allowedEmailDomain || DEFAULT_INTERNAL_EMAIL_DOMAINS;
 
   if (!hasMatchingProxyToken(input, proxyToken)) {
     return null;
   }
 
   const forwardedUser = normalizeEmail(extractForwardedUser(input));
-  if (!isAllowedInternalEmail(forwardedUser, allowedEmailDomain)) {
+  if (!isAllowedInternalEmail(forwardedUser, allowedEmailDomains)) {
     return null;
   }
 
@@ -84,10 +117,11 @@ function resolveTrustedInternalUser(input, options = {}) {
 }
 
 module.exports = {
-  INTERNAL_EMAIL_DOMAIN,
+  DEFAULT_INTERNAL_EMAIL_DOMAINS,
   extractForwardedUser,
   hasMatchingProxyToken,
   isAllowedInternalEmail,
   normalizeEmail,
+  parseAllowedInternalEmailDomains,
   resolveTrustedInternalUser,
 };

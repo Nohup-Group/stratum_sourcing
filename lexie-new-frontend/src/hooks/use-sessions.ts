@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  createSession as apiCreateSession,
+  createSessionForAgent,
   deleteSession as apiDeleteSession,
   listSessions,
   updateSession as apiUpdateSession,
@@ -88,7 +88,8 @@ export function useSessions() {
   }, [queryClient]);
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => apiCreateSession(name),
+    mutationFn: (params: { name: string; agentId?: string | null }) =>
+      createSessionForAgent(params.name, params.agentId),
     onSuccess: async (created) => {
       setCurrentSessionId(created.id);
       prependSession("ACTIVE", created);
@@ -123,7 +124,8 @@ export function useSessions() {
   });
 
   const createSession = useCallback(
-    async (name = "New chat"): Promise<Session> => await createMutation.mutateAsync(name),
+    async (name = "New chat", agentId?: string | null): Promise<Session> =>
+      await createMutation.mutateAsync({ name, agentId }),
     [createMutation],
   );
 

@@ -3,7 +3,7 @@ import { PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import Sidebar from "./Sidebar";
-import type { Session } from "@/lib/types";
+import type { AvailableAgent, Session } from "@/lib/types";
 import type { ViewportKind } from "@/hooks/use-viewport-kind";
 
 interface AppShellProps {
@@ -21,6 +21,9 @@ interface AppShellProps {
   onDeleteSession: (id: string) => void | Promise<void>;
   onArchiveSession: (id: string) => void | Promise<void>;
   onUnarchiveSession: (id: string) => void | Promise<void>;
+  availableAgents: AvailableAgent[];
+  selectedAgentId: string | null;
+  onSelectAgent: (agentId: string) => void;
 }
 
 export default function AppShell({
@@ -35,6 +38,9 @@ export default function AppShell({
   onDeleteSession,
   onArchiveSession,
   onUnarchiveSession,
+  availableAgents,
+  selectedAgentId,
+  onSelectAgent,
 }: AppShellProps) {
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [overlaySidebarOpen, setOverlaySidebarOpen] = useState(false);
@@ -87,6 +93,9 @@ export default function AppShell({
       onDeleteSession={onDeleteSession}
       onArchiveSession={onArchiveSession}
       onUnarchiveSession={onUnarchiveSession}
+      availableAgents={availableAgents}
+      selectedAgentId={selectedAgentId}
+      onSelectAgent={onSelectAgent}
     />
   );
 

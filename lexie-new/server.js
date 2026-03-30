@@ -1,11 +1,13 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const http = require("http");
 const net = require("net");
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
 const { createPgPoolConfig } = require("./pg-config");
 const {
-  INTERNAL_EMAIL_DOMAIN,
+  DEFAULT_INTERNAL_EMAIL_DOMAINS,
+  parseAllowedInternalEmailDomains,
   resolveTrustedInternalUser,
 } = require("./request-auth");
 const { runOpsPrompt } = require("./ops-gateway");
@@ -20,6 +22,7 @@ const {
   listSessions,
   normalizeClientId,
   normalizeSessionStatus,
+  parseAgentIdFromSessionKey,
   touchSession,
   updateSession,
 } = require("./session-store");
@@ -76,6 +79,9 @@ const GATEWAY_STOP_TIMEOUT_MS = parseInteger(
   process.env.GATEWAY_STOP_TIMEOUT_MS || "15000",
   15000,
 );
+const INTERNAL_EMAIL_DOMAINS = parseAllowedInternalEmailDomains(
+  process.env.LEXIE_INTERNAL_EMAIL_DOMAINS || DEFAULT_INTERNAL_EMAIL_DOMAINS,
+);
 
 let shuttingDown = false;
 let gatewayProcess = null;
@@ -100,6 +106,14 @@ function normalizeBasePath(value) {
     return "/";
   }
   return `/${trimmed.replace(/^\/+/, "").replace(/\/+$/, "")}`;
+}
+
+function readOpenClawConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(`${OPENCLAW_STATE_DIR}/openclaw.json`, "utf8"));
+  } catch {
+    return {};
+  }
 }
 
 function log(message) {
@@ -235,8 +249,68 @@ function readControlUiSession(request) {
 function resolveInternalStaffUser(request) {
   return resolveTrustedInternalUser(request, {
     proxyToken: OPENCLAW_CONTROL_UI_PROXY_TOKEN,
-    allowedEmailDomain: INTERNAL_EMAIL_DOMAIN,
+    allowedEmailDomains: INTERNAL_EMAIL_DOMAINS,
   });
+}
+
+function normalizeAgentDefinition(agent, fallbackId) {
+  if (!agent || typeof agent !== "object") {
+    return null;
+  }
+
+  const id = typeof agent.id === "string" && agent.id.trim()
+    ? agent.id.trim()
+    : fallbackId;
+  if (!id) {
+    return null;
+  }
+
+  const rawName =
+    typeof agent.name === "string" && agent.name.trim() ? agent.name.trim() : null;
+  const name =
+    id === "investor"
+      ? "Stratum Data Room"
+      : rawName || (id === "main" ? "Lexie" : id);
+
+  return {
+    id,
+    name,
+    default: agent.default === true || id === "main",
+  };
+}
+
+function listConfiguredAgents() {
+  const config = readOpenClawConfig();
+  const entries = Array.isArray(config?.agents?.list) ? config.agents.list : [];
+  const normalized = entries
+    .map((agent) => normalizeAgentDefinition(agent, null))
+    .filter(Boolean);
+
+  if (normalized.length === 0) {
+    return [
+      { id: "main", name: "Lexie", default: true },
+      { id: "investor", name: "Stratum Data Room", default: false },
+    ];
+  }
+
+  return normalized;
+}
+
+function resolveAvailableAgentsForActor(actorKind) {
+  const configured = listConfiguredAgents();
+  if (actorKind === "investor") {
+    return configured.filter((agent) => agent.id === INVESTOR_AGENT_ID).slice(0, 1).length > 0
+      ? configured.filter((agent) => agent.id === INVESTOR_AGENT_ID)
+      : [{ id: INVESTOR_AGENT_ID, name: "Stratum Data Room", default: true }];
+  }
+  return configured;
+}
+
+function resolveDefaultAgentId(agents) {
+  if (!Array.isArray(agents) || agents.length === 0) {
+    return DEFAULT_AGENT_ID;
+  }
+  return agents.find((agent) => agent.default)?.id || agents[0].id;
 }
 
 function resolveControlUiOperator(request) {
@@ -459,26 +533,23 @@ async function probeGateway(timeoutMs = 60000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const ready = await new Promise((resolve) => {
-      const request = http.request(
+      const socket = net.connect(
         {
           host: INTERNAL_GATEWAY_HOST,
           port: INTERNAL_GATEWAY_PORT,
-          method: "GET",
-          path: "/",
-          timeout: 2000,
         },
-        (response) => {
-          response.resume();
+        () => {
+          socket.end();
           resolve(true);
         },
       );
 
-      request.on("timeout", () => {
-        request.destroy();
+      socket.setTimeout(2000);
+      socket.on("timeout", () => {
+        socket.destroy();
         resolve(false);
       });
-      request.on("error", () => resolve(false));
-      request.end();
+      socket.on("error", () => resolve(false));
     });
 
     if (ready) {
@@ -987,6 +1058,31 @@ function buildChatCapabilities() {
   };
 }
 
+function authPayloadForActor(actor, investor) {
+  const availableAgents = resolveAvailableAgentsForActor(actor?.kind || (investor ? "investor" : "internal"));
+  const defaultAgentId =
+    actor?.kind === "investor" || investor
+      ? INVESTOR_AGENT_ID
+      : resolveDefaultAgentId(availableAgents);
+
+  if (investor) {
+    return {
+      type: "investor",
+      name: investor.name,
+      inviteId: investor.inviteId,
+      availableAgents,
+      defaultAgentId,
+    };
+  }
+
+  return {
+    type: "internal",
+    email: actor?.email || null,
+    availableAgents,
+    defaultAgentId,
+  };
+}
+
 async function handleInviteRedeem(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
   const inviteMatch = requestUrl.pathname.match(/^\/(?:api\/)?auth\/invite\/([a-f0-9]{64})$/);
@@ -1042,16 +1138,12 @@ async function handleApiRequest(request, response) {
     }
 
     if (investor) {
-      sendJson(response, 200, {
-        type: "investor",
-        name: investor.name,
-        inviteId: investor.inviteId,
-      });
+      sendJson(response, 200, authPayloadForActor(apiActor, investor));
       return true;
     }
 
     if (apiActor?.kind === "internal") {
-      sendJson(response, 200, { type: "internal" });
+      sendJson(response, 200, authPayloadForActor(apiActor, null));
       return true;
     }
 
@@ -1253,7 +1345,16 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const agentId = apiActor.kind === "investor" ? INVESTOR_AGENT_ID : OPENCLAW_AGENT_ID;
+      const availableAgents = resolveAvailableAgentsForActor(apiActor.kind);
+      const requestedAgentId =
+        typeof body.agentId === "string" && body.agentId.trim() ? body.agentId.trim() : null;
+      const allowedAgentIds = new Set(availableAgents.map((agent) => agent.id));
+      const agentId =
+        apiActor.kind === "investor"
+          ? INVESTOR_AGENT_ID
+          : requestedAgentId && allowedAgentIds.has(requestedAgentId)
+            ? requestedAgentId
+            : resolveDefaultAgentId(availableAgents) || OPENCLAW_AGENT_ID;
       const created = await createSession(sessionPool, {
         clientId,
         name: body.name || DEFAULT_SESSION_NAME,

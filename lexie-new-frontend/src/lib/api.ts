@@ -58,9 +58,19 @@ export async function listSessions(
 }
 
 export async function createSession(name = "New chat"): Promise<Session> {
+  return await createSessionForAgent(name);
+}
+
+export async function createSessionForAgent(
+  name = "New chat",
+  agentId?: string | null,
+): Promise<Session> {
   const response = await apiFetch("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name,
+      ...(agentId ? { agentId } : {}),
+    }),
   });
 
   if (!response.ok) {

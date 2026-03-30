@@ -15,7 +15,15 @@ describe("useAuth", () => {
 
   it("marks internal staff requests as authenticated", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ type: "internal" }), {
+      new Response(JSON.stringify({
+        type: "internal",
+        email: "operator@nohup.group",
+        defaultAgentId: "main",
+        availableAgents: [
+          { id: "main", name: "Lexie", default: true },
+          { id: "investor", name: "Stratum Data Room" },
+        ],
+      }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -32,6 +40,12 @@ describe("useAuth", () => {
         isAuthenticated: true,
         userType: "internal",
         investorName: null,
+        email: "operator@nohup.group",
+        availableAgents: [
+          { id: "main", name: "Lexie", default: true },
+          { id: "investor", name: "Stratum Data Room" },
+        ],
+        defaultAgentId: "main",
       });
     });
 
@@ -44,7 +58,12 @@ describe("useAuth", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ type: "investor", name: "Jane Investor" }), {
+        new Response(JSON.stringify({
+          type: "investor",
+          name: "Jane Investor",
+          defaultAgentId: "investor",
+          availableAgents: [{ id: "investor", name: "Stratum Data Room", default: true }],
+        }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -59,6 +78,9 @@ describe("useAuth", () => {
         isAuthenticated: true,
         userType: "investor",
         investorName: "Jane Investor",
+        email: null,
+        availableAgents: [{ id: "investor", name: "Stratum Data Room", default: true }],
+        defaultAgentId: "investor",
       });
     });
   });
@@ -82,6 +104,9 @@ describe("useAuth", () => {
         isAuthenticated: false,
         userType: null,
         investorName: null,
+        email: null,
+        availableAgents: [],
+        defaultAgentId: null,
       });
     });
   });
@@ -100,6 +125,9 @@ describe("useAuth", () => {
         isAuthenticated: false,
         userType: null,
         investorName: null,
+        email: null,
+        availableAgents: [],
+        defaultAgentId: null,
       });
     });
   });

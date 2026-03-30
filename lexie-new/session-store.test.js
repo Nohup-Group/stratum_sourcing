@@ -9,6 +9,7 @@ const {
   listSessions,
   normalizeClientId,
   normalizeSessionStatus,
+  parseAgentIdFromSessionKey,
   touchSession,
   updateSession,
 } = require("./session-store");
@@ -44,6 +45,16 @@ test("buildGatewaySessionKey uses agent id, client id, and session id", () => {
     buildGatewaySessionKey("session-123", "client_1234567890abcdef", "main"),
     "agent:main:webchat:user:client_1234567890abcdef:session:session-123",
   );
+});
+
+test("parseAgentIdFromSessionKey extracts the agent id from stored session keys", () => {
+  assert.equal(
+    parseAgentIdFromSessionKey(
+      "agent:investor:webchat:user:client_1234567890abcdef:session:session-123",
+    ),
+    "investor",
+  );
+  assert.equal(parseAgentIdFromSessionKey("legacy-session-key"), "main");
 });
 
 test("listSessions scopes queries by client id and status", async () => {
@@ -118,6 +129,7 @@ test("createSession persists a generated gateway session key", async () => {
   });
 
   assert.equal(created.client_id, "client_1234567890abcdef");
+  assert.equal(created.agent_id, "main");
   assert.match(
     pool.calls[0].params[2],
     /^agent:main:webchat:user:client_1234567890abcdef:session:/,

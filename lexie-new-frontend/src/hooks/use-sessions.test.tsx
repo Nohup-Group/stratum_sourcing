@@ -5,12 +5,12 @@ import { useSessions } from "./use-sessions";
 
 vi.mock("@/lib/api", () => ({
   listSessions: vi.fn(),
-  createSession: vi.fn(),
+  createSessionForAgent: vi.fn(),
   updateSession: vi.fn(),
   deleteSession: vi.fn(),
 }));
 
-import { createSession, listSessions } from "@/lib/api";
+import { createSessionForAgent, listSessions } from "@/lib/api";
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -28,7 +28,7 @@ function createWrapper() {
 describe("useSessions", () => {
   beforeEach(() => {
     vi.mocked(listSessions).mockReset();
-    vi.mocked(createSession).mockReset();
+    vi.mocked(createSessionForAgent).mockReset();
   });
 
   it("selects the most recent active session when available", async () => {
@@ -38,6 +38,7 @@ describe("useSessions", () => {
           id: "session-1",
           client_id: "client_1234567890abcdef",
           gateway_session_key: "agent:main:webchat:user:client_1234567890abcdef:session:session-1",
+          agent_id: "main",
           name: "First",
           status: "ACTIVE",
           created_at: "2026-03-16T10:00:00.000Z",
@@ -61,6 +62,7 @@ describe("useSessions", () => {
           id: "session-2",
           client_id: "client_1234567890abcdef",
           gateway_session_key: "agent:main:webchat:user:client_1234567890abcdef:session:session-2",
+          agent_id: "main",
           name: "New chat",
           status: "ACTIVE",
           created_at: "2026-03-16T11:00:00.000Z",
@@ -68,10 +70,11 @@ describe("useSessions", () => {
         },
       ])
       .mockResolvedValue([]);
-    vi.mocked(createSession).mockResolvedValue({
+    vi.mocked(createSessionForAgent).mockResolvedValue({
       id: "session-2",
       client_id: "client_1234567890abcdef",
       gateway_session_key: "agent:main:webchat:user:client_1234567890abcdef:session:session-2",
+      agent_id: "main",
       name: "New chat",
       status: "ACTIVE",
       created_at: "2026-03-16T11:00:00.000Z",
@@ -84,7 +87,7 @@ describe("useSessions", () => {
       await result.current.createSession();
     });
 
-    expect(createSession).toHaveBeenCalledWith("New chat");
+    expect(createSessionForAgent).toHaveBeenCalledWith("New chat", undefined);
     await waitFor(() => expect(result.current.currentSessionId).toBe("session-2"));
     expect(result.current.currentSession?.id).toBe("session-2");
   });
