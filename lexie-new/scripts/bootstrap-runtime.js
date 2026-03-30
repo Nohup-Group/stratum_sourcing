@@ -285,9 +285,19 @@ async function patchOpenClawConfig() {
   delete gatewayAuth.password;
   gatewayTrustedProxy.userHeader = "x-forwarded-user";
   gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
-  gatewayTrustedProxy.allowUsers = [
-    process.env.OPENCLAW_CONTROL_UI_USER || "superadmin@lexie.local",
-  ];
+  if (typeof process.env.OPENCLAW_TRUSTED_PROXY_ALLOW_USERS === "string") {
+    const allowUsers = process.env.OPENCLAW_TRUSTED_PROXY_ALLOW_USERS
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (allowUsers.length > 0) {
+      gatewayTrustedProxy.allowUsers = allowUsers;
+    } else {
+      delete gatewayTrustedProxy.allowUsers;
+    }
+  } else {
+    delete gatewayTrustedProxy.allowUsers;
+  }
   gatewayRemote.token = stableGatewayToken;
   gatewayControlUi.basePath =
     process.env.OPENCLAW_CONTROL_UI_BASE_PATH || "/openclaw/ui";
@@ -298,6 +308,7 @@ async function patchOpenClawConfig() {
   for (const origin of [
     process.env.RAILWAY_PUBLIC_DOMAIN,
     process.env.RAILWAY_SERVICE_LEXIE_NEW_FRONTEND_URL,
+    process.env.LEXIE_FRONTEND_PUBLIC_DOMAIN || "lexie.stratum3.org",
   ]) {
     const normalizedOrigin = toHttpsOrigin(origin);
     if (normalizedOrigin) {

@@ -56,6 +56,10 @@ const OPENCLAW_CONTROL_UI_COOKIE_NAME =
   process.env.OPENCLAW_CONTROL_UI_COOKIE_NAME || "lexie_openclaw_ui";
 const OPENCLAW_CONTROL_UI_USER =
   process.env.OPENCLAW_CONTROL_UI_USER || "superadmin@lexie.local";
+const OPENCLAW_CONTROL_UI_PROXY_TOKEN =
+  process.env.OPENCLAW_CONTROL_UI_PROXY_TOKEN ||
+  process.env.OPENCLAW_GATEWAY_TOKEN ||
+  "";
 const OPENCLAW_CONTROL_UI_COOKIE_TTL_MS = parseInteger(
   process.env.OPENCLAW_CONTROL_UI_COOKIE_TTL_MS || "604800000",
   604800000,
@@ -254,6 +258,56 @@ function readControlUiSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const token = cookies[OPENCLAW_CONTROL_UI_COOKIE_NAME];
   return verifySignedControlUiSession(secret, token);
+}
+
+function forwardedControlUiUser(request) {
+  const candidates = [
+    request.headers["x-forwarded-user"],
+    request.headers["cf-access-authenticated-user-email"],
+    request.headers["x-agent-user-email"],
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      const first = candidate[0];
+      if (typeof first === "string" && first.trim()) {
+        return first.trim();
+      }
+    }
+  }
+  return "";
+}
+
+function hasValidControlUiProxyAuth(request) {
+  if (!OPENCLAW_CONTROL_UI_PROXY_TOKEN) {
+    return false;
+  }
+  const authorization = request.headers.authorization;
+  if (typeof authorization === "string") {
+    const expected = `Bearer ${OPENCLAW_CONTROL_UI_PROXY_TOKEN}`;
+    if (authorization.trim() === expected) {
+      return true;
+    }
+  }
+  const proxyHeader = request.headers["x-openclaw-control-ui-auth"];
+  if (typeof proxyHeader === "string" && proxyHeader.trim() === OPENCLAW_CONTROL_UI_PROXY_TOKEN) {
+    return true;
+  }
+  return false;
+}
+
+function resolveControlUiOperator(request) {
+  const forwardedUser = forwardedControlUiUser(request);
+  if (forwardedUser && hasValidControlUiProxyAuth(request)) {
+    return { user: forwardedUser, source: "trusted-proxy" };
+  }
+  const session = readControlUiSession(request);
+  if (session) {
+    return { user: session.user, source: "cookie" };
+  }
+  return null;
 }
 
 function redirect(response, location, statusCode = 307) {
@@ -579,15 +633,15 @@ function proxyUpgradeRequest(request, socket, head) {
     OPENCLAW_CONTROL_UI_BASE_PATH,
   );
   if (isControlUiUpgrade) {
-    const session = readControlUiSession(request);
-    if (!session) {
+    const operator = resolveControlUiOperator(request);
+    if (!operator) {
       socket.write(
         "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nCache-Control: no-store\r\n\r\nControl UI login required",
       );
       socket.destroy();
       return;
     }
-    request._controlUiUser = session.user;
+    request._controlUiUser = operator.user;
   }
 
   // Resolve user: investor cookie takes priority, then query param client_id
@@ -798,6 +852,7 @@ async function getSessionPool(response) {
 async function handleControlUiRequest(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
   const password = resolveControlUiPassword();
+  const operator = resolveControlUiOperator(request);
 
   if (!password && (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_LAUNCH_PATH) || pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH))) {
     sendApiError(
@@ -812,8 +867,8 @@ async function handleControlUiRequest(request, response) {
     requestUrl.pathname === OPENCLAW_CONTROL_UI_LAUNCH_PATH ||
     requestUrl.pathname === `${OPENCLAW_CONTROL_UI_LAUNCH_PATH}/`
   ) {
-    const session = readControlUiSession(request);
-    if (session) {
+    if (operator) {
+      request._controlUiUser = operator.user;
       redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
       return true;
     }
@@ -855,32 +910,31 @@ async function handleControlUiRequest(request, response) {
   }
 
   if (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH)) {
-    const session = readControlUiSession(request);
-    if (!session) {
+    if (!operator) {
       redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
       return true;
     }
-    request._controlUiUser = session.user;
+    request._controlUiUser = operator.user;
     return false;
   }
 
   if (requestUrl.pathname === "/api/openclaw/control-ui/authorize") {
-    const session = readControlUiSession(request);
-    if (!session) {
+    if (!operator) {
       sendApiError(response, 401, "Control UI login required");
       return true;
     }
+    request._controlUiUser = operator.user;
     response.writeHead(204, { "cache-control": "no-store" });
     response.end();
     return true;
   }
 
   if (requestUrl.pathname === "/api/openclaw/control-ui/launch") {
-    const session = readControlUiSession(request);
-    if (!session) {
+    if (!operator) {
       redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
       return true;
     }
+    request._controlUiUser = operator.user;
     redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
     return true;
   }
