@@ -550,16 +550,37 @@ async function startGateway() {
   gatewayProcess.on("exit", (code, signal) => {
     logError(`gateway exited with code=${code} signal=${signal}`);
     gatewayProcess = null;
-    gatewayReady = false;
 
     if (!shuttingDown) {
-      restartTimer = setTimeout(() => {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+      }
+      restartTimer = setTimeout(async () => {
         restartTimer = null;
-        startGateway().catch((error) => {
-          logError(`gateway restart failed: ${error.stack || error.message}`);
-        });
-      }, 2000);
+        try {
+          const stillReachable = await probeGateway(3000);
+          if (stillReachable) {
+            gatewayReady = true;
+            log("gateway launcher exited but gateway is still reachable");
+            return;
+          }
+
+          gatewayReady = false;
+          startGateway().catch((error) => {
+            logError(`gateway restart failed: ${error.stack || error.message}`);
+          });
+        } catch (error) {
+          gatewayReady = false;
+          logError(`gateway post-exit probe failed: ${error.stack || error.message}`);
+          startGateway().catch((restartError) => {
+            logError(`gateway restart failed: ${restartError.stack || restartError.message}`);
+          });
+        }
+      }, 1000);
+      return;
     }
+
+    gatewayReady = false;
   });
 
   const ready = await probeGateway();
