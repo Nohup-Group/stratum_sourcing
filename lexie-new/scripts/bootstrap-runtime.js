@@ -17,10 +17,13 @@ const SOURCE_WORKSPACE = path.join(APP_ROOT, "workspace");
 const SOURCE_INVESTOR_WORKSPACE = path.join(APP_ROOT, "workspace-investor");
 const INVESTOR_WORKSPACE_ROOT = path.join(DATA_ROOT, "workspace-investor");
 const CONFIG_PATH = path.join(STATE_ROOT, "openclaw.json");
+const BOOTSTRAP_STATE_PATH = path.join(DATA_ROOT, ".lexie-bootstrap-state.json");
 const TARGET_SKILLS_DIR = path.join(WORKSPACE_ROOT, "skills");
 const TARGET_KNOWLEDGE_DIR = path.join(WORKSPACE_ROOT, "knowledge");
 const TARGET_INVESTOR_SKILLS_DIR = path.join(INVESTOR_WORKSPACE_ROOT, "skills");
 const TARGET_INVESTOR_KNOWLEDGE_DIR = path.join(INVESTOR_WORKSPACE_ROOT, "knowledge");
+const WORKSPACE_SYNC_VERSION = 1;
+const BACKFILL_VERSION = 1;
 const ROOT_FILES = [
   "AGENTS.md",
   "SOUL.md",
@@ -30,7 +33,8 @@ const ROOT_FILES = [
   "HEARTBEAT.md",
   "MEMORY.md",
 ];
-const MANAGED_DIRS = ["knowledge", "skills"];
+const SEEDED_DIRS = ["knowledge"];
+const MANAGED_DIRS = ["skills"];
 
 function splitAllowedOrigins(raw) {
   if (typeof raw !== "string") {
@@ -92,6 +96,13 @@ async function copyManagedFile(sourcePath, targetPath) {
   await fs.writeFile(targetPath, contents, "utf8");
 }
 
+async function copyFileIfMissing(sourcePath, targetPath) {
+  if (await pathExists(targetPath)) {
+    return;
+  }
+  await copyManagedFile(sourcePath, targetPath);
+}
+
 async function copyManagedDir(sourceDir, targetDir) {
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
   await ensureDir(targetDir);
@@ -104,6 +115,25 @@ async function copyManagedDir(sourceDir, targetDir) {
       await copyManagedFile(sourcePath, targetPath);
     }
   }
+}
+
+async function copySeededDir(sourceDir, targetDir) {
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  await ensureDir(targetDir);
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      await copySeededDir(sourcePath, targetPath);
+    } else if (entry.isFile()) {
+      await copyFileIfMissing(sourcePath, targetPath);
+    }
+  }
+}
+
+async function replaceManagedDir(sourceDir, targetDir) {
+  await fs.rm(targetDir, { recursive: true, force: true });
+  await copyManagedDir(sourceDir, targetDir);
 }
 
 function ensureObject(parent, key) {
@@ -121,8 +151,14 @@ function appendUnique(array, value) {
 }
 
 function ensureGatewayToken(currentValue) {
-  if (typeof process.env.OPENCLAW_GATEWAY_TOKEN === "string" && process.env.OPENCLAW_GATEWAY_TOKEN.trim()) {
-    return process.env.OPENCLAW_GATEWAY_TOKEN.trim();
+  const envCandidates = [
+    process.env.OPENCLAW_GATEWAY_REMOTE_TOKEN,
+    process.env.OPENCLAW_GATEWAY_TOKEN,
+  ];
+  for (const candidate of envCandidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
   }
   if (typeof currentValue === "string" && currentValue.trim()) {
     return currentValue.trim();
@@ -130,16 +166,82 @@ function ensureGatewayToken(currentValue) {
   return crypto.randomBytes(24).toString("hex");
 }
 
+async function readBootstrapState() {
+  return await readJsonSafe(BOOTSTRAP_STATE_PATH, {});
+}
+
+async function writeBootstrapState(state) {
+  await writeJsonAtomic(BOOTSTRAP_STATE_PATH, state);
+}
+
+function hasCodexProfile(config) {
+  const auth = config && typeof config === "object" ? config.auth : null;
+  const profiles = auth && typeof auth === "object" ? auth.profiles : null;
+  if (!profiles || typeof profiles !== "object") {
+    return false;
+  }
+
+  return Object.entries(profiles).some(([name, profile]) => {
+    return (
+      typeof name === "string" &&
+      name.startsWith("openai-codex:") &&
+      profile &&
+      typeof profile === "object" &&
+      profile.provider === "openai-codex"
+    );
+  });
+}
+
+function resolveDefaultModelConfig(config) {
+  const openAiKeyConfigured = Boolean(
+    typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim(),
+  );
+  const codexConfigured = hasCodexProfile(config);
+
+  if (codexConfigured) {
+    return {
+      primary: "openai-codex/gpt-5.4",
+      fallbacks: openAiKeyConfigured ? ["openai-direct/gpt-5.4"] : [],
+    };
+  }
+
+  if (openAiKeyConfigured) {
+    return {
+      primary: "openai-direct/gpt-5.4",
+      fallbacks: [],
+    };
+  }
+
+  return null;
+}
+
+async function shouldGenerateBackfill(state) {
+  if (state.backfillVersion !== BACKFILL_VERSION) {
+    return true;
+  }
+
+  return !(await pathExists(
+    path.join(WORKSPACE_ROOT, "knowledge", "backfill", "manifests", "session-inventory.md"),
+  ));
+}
+
 async function syncWorkspace() {
   for (const fileName of ROOT_FILES) {
-    await copyManagedFile(
+    await copyFileIfMissing(
       path.join(SOURCE_WORKSPACE, fileName),
       path.join(WORKSPACE_ROOT, fileName),
     );
   }
 
+  for (const dirName of SEEDED_DIRS) {
+    await copySeededDir(
+      path.join(SOURCE_WORKSPACE, dirName),
+      path.join(WORKSPACE_ROOT, dirName),
+    );
+  }
+
   for (const dirName of MANAGED_DIRS) {
-    await copyManagedDir(
+    await replaceManagedDir(
       path.join(SOURCE_WORKSPACE, dirName),
       path.join(WORKSPACE_ROOT, dirName),
     );
@@ -158,7 +260,8 @@ const INVESTOR_ROOT_FILES = [
   "TOOLS.md",
   "MEMORY.md",
 ];
-const INVESTOR_MANAGED_DIRS = ["knowledge", "skills"];
+const INVESTOR_SEEDED_DIRS = ["knowledge"];
+const INVESTOR_MANAGED_DIRS = ["skills"];
 
 async function syncInvestorWorkspace() {
   if (!(await pathExists(SOURCE_INVESTOR_WORKSPACE))) {
@@ -168,14 +271,21 @@ async function syncInvestorWorkspace() {
   for (const fileName of INVESTOR_ROOT_FILES) {
     const src = path.join(SOURCE_INVESTOR_WORKSPACE, fileName);
     if (await pathExists(src)) {
-      await copyManagedFile(src, path.join(INVESTOR_WORKSPACE_ROOT, fileName));
+      await copyFileIfMissing(src, path.join(INVESTOR_WORKSPACE_ROOT, fileName));
+    }
+  }
+
+  for (const dirName of INVESTOR_SEEDED_DIRS) {
+    const src = path.join(SOURCE_INVESTOR_WORKSPACE, dirName);
+    if (await pathExists(src)) {
+      await copySeededDir(src, path.join(INVESTOR_WORKSPACE_ROOT, dirName));
     }
   }
 
   for (const dirName of INVESTOR_MANAGED_DIRS) {
     const src = path.join(SOURCE_INVESTOR_WORKSPACE, dirName);
     if (await pathExists(src)) {
-      await copyManagedDir(src, path.join(INVESTOR_WORKSPACE_ROOT, dirName));
+      await replaceManagedDir(src, path.join(INVESTOR_WORKSPACE_ROOT, dirName));
     }
   }
 }
@@ -237,7 +347,7 @@ async function patchOpenClawConfig() {
     agentDir: path.join(STATE_ROOT, "agents", "investor", "agent"),
   });
 
-  // --- Model: openai-direct (OPENAI_API_KEY) as primary, codex as fallback ---
+  // --- Models: prefer Codex OAuth when configured, otherwise fall back to OPENAI_API_KEY ---
   const models = ensureObject(config, "models");
   const providers = ensureObject(models, "providers");
   const openaiDirect = ensureObject(providers, "openai-direct");
@@ -258,8 +368,11 @@ async function patchOpenClawConfig() {
   ];
 
   const defaultModel = ensureObject(defaults, "model");
-  defaultModel.primary = "openai-direct/gpt-5.4";
-  defaultModel.fallbacks = ["openai-codex/gpt-5.4"];
+  const resolvedModelConfig = resolveDefaultModelConfig(config);
+  if (resolvedModelConfig) {
+    defaultModel.primary = resolvedModelConfig.primary;
+    defaultModel.fallbacks = resolvedModelConfig.fallbacks;
+  }
 
   memorySearch.enabled = true;
   memorySearch.provider = "openai";
@@ -336,6 +449,8 @@ async function patchOpenClawConfig() {
 }
 
 async function main() {
+  const bootstrapState = await readBootstrapState();
+
   await ensureDir(WORKSPACE_ROOT);
   await ensureDir(INVESTOR_WORKSPACE_ROOT);
   await ensureDir(STATE_ROOT);
@@ -348,9 +463,17 @@ async function main() {
   await syncWorkspace();
   await syncInvestorWorkspace();
   await patchOpenClawConfig();
-  await generateBackfill({
-    workspaceRoot: WORKSPACE_ROOT,
-    stateRoot: STATE_ROOT,
+  if (await shouldGenerateBackfill(bootstrapState)) {
+    await generateBackfill({
+      workspaceRoot: WORKSPACE_ROOT,
+      stateRoot: STATE_ROOT,
+    });
+  }
+  await writeBootstrapState({
+    ...bootstrapState,
+    workspaceSyncVersion: WORKSPACE_SYNC_VERSION,
+    backfillVersion: BACKFILL_VERSION,
+    updatedAt: new Date().toISOString(),
   });
 
   process.stdout.write(
@@ -358,9 +481,19 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  process.stderr.write(
-    `[lexie-bootstrap] bootstrap failed: ${error.stack || error.message}\n`,
-  );
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(
+      `[lexie-bootstrap] bootstrap failed: ${error.stack || error.message}\n`,
+    );
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  BACKFILL_VERSION,
+  WORKSPACE_SYNC_VERSION,
+  hasCodexProfile,
+  resolveDefaultModelConfig,
+  shouldGenerateBackfill,
+};

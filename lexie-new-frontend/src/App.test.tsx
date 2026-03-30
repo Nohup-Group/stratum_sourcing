@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { vi, describe, expect, it } from "vitest";
+import { vi, describe, expect, it, beforeEach } from "vitest";
 import App from "./App";
+
+const useAuthMock = vi.fn();
 
 vi.mock("@assistant-ui/react", () => ({
   AssistantRuntimeProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -41,6 +43,10 @@ vi.mock("@/hooks/use-agent-runtime", () => ({
   }),
 }));
 
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => useAuthMock(),
+}));
+
 vi.mock("@/hooks/use-viewport-kind", () => ({
   useViewportKind: () => "desktop",
 }));
@@ -50,7 +56,37 @@ vi.mock("@/components/chat/ChatArea", () => ({
 }));
 
 describe("App", () => {
-  it("renders the Stratum shell without project selection controls", () => {
+  beforeEach(() => {
+    useAuthMock.mockReset();
+  });
+
+  it("shows a loading spinner while auth state is resolving", () => {
+    useAuthMock.mockReturnValue({
+      isLoading: true,
+      isAuthenticated: false,
+      userType: null,
+      investorName: null,
+    });
+
+    const queryClient = new QueryClient();
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(container.querySelector(".animate-spin")).toBeTruthy();
+  });
+
+  it("renders the invite gate for unauthenticated users", () => {
+    useAuthMock.mockReturnValue({
+      isLoading: false,
+      isAuthenticated: false,
+      userType: null,
+      investorName: null,
+    });
+
     const queryClient = new QueryClient();
 
     render(
@@ -59,7 +95,25 @@ describe("App", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText(/Start a new chat to create your first Lexie session/i)).toBeTruthy();
-    expect(screen.queryByText(/Project/i)).toBeNull();
+    expect(screen.getByText(/Welcome to Lexie/i)).toBeTruthy();
+  });
+
+  it("renders the authenticated shell once auth succeeds", () => {
+    useAuthMock.mockReturnValue({
+      isLoading: false,
+      isAuthenticated: true,
+      userType: "internal",
+      investorName: null,
+    });
+
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("Chat area")).toBeTruthy();
   });
 });

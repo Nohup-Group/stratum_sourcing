@@ -23,12 +23,29 @@ The entrypoint now also:
 
 - exports `OPENCLAW_HOME=/data` so OpenClaw resolves its active workspace from the volume
 - maintains a compatibility symlink for old `/openclaw/skills/*` references
-- materializes the managed workspace payload from `/app/workspace` into `/data/workspace`
-- patches `/data/.openclaw/openclaw.json` with the required Phase 1 memory + skills defaults
+- seeds missing bootstrap files and knowledge docs from `/app/workspace` into `/data/workspace`
+- syncs repo-managed skills from `/app/workspace/skills` into `/data/workspace/skills` on every boot
+- patches the existing `/data/.openclaw/openclaw.json` in place instead of deleting it
 - generates backfill manifests and transcript shards under `/data/workspace/knowledge/backfill`
 
 After that it starts a session DBus bus and a secrets-only `gnome-keyring-daemon`
 before starting the Node wrapper so `gog` can keep credentials on the persistent volume.
+
+## Auth and secret split
+
+- Internal staff API access is only trusted when the request comes from the frontend proxy with:
+  - `Authorization: Bearer $OPENCLAW_CONTROL_UI_PROXY_TOKEN`
+  - a forwarded user email ending in `@nohup.group`
+- Investor access still uses the invite/session cookie flow.
+- `X-Lexie-Client-Id` is only a session partition key. It is not authentication.
+
+Use separate secrets for separate responsibilities:
+
+- `OPENCLAW_GATEWAY_REMOTE_TOKEN`: remote gateway/device/admin token
+- `OPENCLAW_CONTROL_UI_PROXY_TOKEN`: frontend-to-backend trusted proxy secret
+- `OPENCLAW_CONTROL_UI_PASSWORD`: optional direct-login password for non-Railway/local environments only
+
+On Railway production, the backend does not expose a direct password login page for `/openclaw`; the supported path is the Cloudflare-protected frontend route at `lexie.stratum3.org/openclaw`.
 
 ## Railway provisioning
 
@@ -37,7 +54,10 @@ before starting the Node wrapper so `gog` can keep credentials on the persistent
 3. Set builder to `DOCKERFILE`.
 4. Attach a new empty volume at `/data`.
 5. Batch-copy the old Lexie service variables, excluding Railway runtime variables, `PORT`, `HOME`, and `PWD`.
-6. Rotate `OPENCLAW_GATEWAY_TOKEN` for `lexie-new`.
+6. Set a dedicated `OPENCLAW_GATEWAY_REMOTE_TOKEN` for `lexie-new`.
+7. Set a separate `OPENCLAW_CONTROL_UI_PROXY_TOKEN` shared only between the frontend and backend services.
+
+The backend still accepts legacy `OPENCLAW_GATEWAY_TOKEN` as a fallback input for the remote token during migration, but new deploys should use the split variables explicitly.
 
 ## Empty-volume validation
 
@@ -71,8 +91,27 @@ Managed bootstrap files and Stratum-specific knowledge/skills live in:
 - `/app/workspace/knowledge/**/*`
 - `/app/workspace/skills/**/*`
 
-The container copies these into `/data/workspace` on startup without deleting
-other non-managed files already present on the volume.
+Ownership is intentionally split:
+
+- Volume-owned and persistent:
+  - `/data/.openclaw/openclaw.json`
+  - `/data/workspace/*.md`
+  - `/data/workspace/knowledge/**/*`
+  - `/data/workspace/memory/**/*`
+  - generated backfill outputs
+- Repo-managed and deploy-updated:
+  - `/data/workspace/skills/**/*`
+
+The container only seeds missing mutable docs and knowledge files. It does not overwrite reviewed memory/bootstrap content already present on the volume. Skills are the only workspace subtree that is force-synced on each boot.
+
+Bootstrap state is tracked in `/data/.lexie-bootstrap-state.json` so future migrations can run once without clobbering reviewed docs.
+
+## Model defaults
+
+- Preferred default model: `openai-codex/gpt-5.4` when an `openai-codex:*` auth profile exists in the live config
+- Fallback default model: `openai-direct/gpt-5.4` when Codex auth is absent but `OPENAI_API_KEY` is available
+- Default thinking level: `high`
+- Memory embeddings stay on OpenAI with `text-embedding-3-small`
 
 ## Cutover
 

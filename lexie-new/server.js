@@ -3,6 +3,11 @@ const http = require("http");
 const net = require("net");
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
+const { createPgPoolConfig } = require("./pg-config");
+const {
+  INTERNAL_EMAIL_DOMAIN,
+  resolveTrustedInternalUser,
+} = require("./request-auth");
 const { runOpsPrompt } = require("./ops-gateway");
 const {
   DEFAULT_AGENT_ID,
@@ -57,7 +62,9 @@ const OPENCLAW_CONTROL_UI_COOKIE_NAME =
 const OPENCLAW_CONTROL_UI_USER =
   process.env.OPENCLAW_CONTROL_UI_USER || "superadmin@lexie.local";
 const OPENCLAW_CONTROL_UI_PROXY_TOKEN =
-  process.env.OPENCLAW_CONTROL_UI_PROXY_TOKEN ||
+  process.env.OPENCLAW_CONTROL_UI_PROXY_TOKEN || "";
+const OPENCLAW_GATEWAY_REMOTE_TOKEN =
+  process.env.OPENCLAW_GATEWAY_REMOTE_TOKEN ||
   process.env.OPENCLAW_GATEWAY_TOKEN ||
   "";
 const OPENCLAW_CONTROL_UI_COOKIE_TTL_MS = parseInteger(
@@ -95,22 +102,6 @@ function normalizeBasePath(value) {
   return `/${trimmed.replace(/^\/+/, "").replace(/\/+$/, "")}`;
 }
 
-function createPgPoolConfig(connectionString) {
-  let sslMode = process.env.PGSSLMODE || "";
-  try {
-    const url = new URL(connectionString);
-    sslMode = url.searchParams.get("sslmode") || sslMode;
-  } catch {
-    // Let pg raise malformed URL errors later.
-  }
-
-  const needsSsl = /require|verify-ca|verify-full/i.test(sslMode);
-  return {
-    connectionString,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
-  };
-}
-
 function log(message) {
   process.stdout.write(`[lexie-new] ${message}\n`);
 }
@@ -143,32 +134,13 @@ function parseCookies(cookieHeader) {
   return cookies;
 }
 
-function readGatewayConfig() {
-  try {
-    return JSON.parse(require("fs").readFileSync(`${OPENCLAW_STATE_DIR}/openclaw.json`, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
 function resolveControlUiPassword() {
-  const direct = process.env.OPENCLAW_CONTROL_UI_PASSWORD || process.env.SETUP_PASSWORD;
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return "";
+  }
+  const direct = process.env.OPENCLAW_CONTROL_UI_PASSWORD || "";
   if (typeof direct === "string" && direct.trim()) {
     return direct.trim();
-  }
-  const config = readGatewayConfig();
-  const remoteToken =
-    config &&
-    config.gateway &&
-    config.gateway.remote &&
-    typeof config.gateway.remote.token === "string"
-      ? config.gateway.remote.token.trim()
-      : "";
-  if (remoteToken) {
-    return remoteToken;
-  }
-  if (LEXIE_OPS_TOKEN.trim()) {
-    return LEXIE_OPS_TOKEN.trim();
   }
   return "";
 }
@@ -260,54 +232,52 @@ function readControlUiSession(request) {
   return verifySignedControlUiSession(secret, token);
 }
 
-function forwardedControlUiUser(request) {
-  const candidates = [
-    request.headers["x-forwarded-user"],
-    request.headers["cf-access-authenticated-user-email"],
-    request.headers["x-agent-user-email"],
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-    if (Array.isArray(candidate) && candidate.length > 0) {
-      const first = candidate[0];
-      if (typeof first === "string" && first.trim()) {
-        return first.trim();
-      }
-    }
-  }
-  return "";
-}
-
-function hasValidControlUiProxyAuth(request) {
-  if (!OPENCLAW_CONTROL_UI_PROXY_TOKEN) {
-    return false;
-  }
-  const authorization = request.headers.authorization;
-  if (typeof authorization === "string") {
-    const expected = `Bearer ${OPENCLAW_CONTROL_UI_PROXY_TOKEN}`;
-    if (authorization.trim() === expected) {
-      return true;
-    }
-  }
-  const proxyHeader = request.headers["x-openclaw-control-ui-auth"];
-  if (typeof proxyHeader === "string" && proxyHeader.trim() === OPENCLAW_CONTROL_UI_PROXY_TOKEN) {
-    return true;
-  }
-  return false;
+function resolveInternalStaffUser(request) {
+  return resolveTrustedInternalUser(request, {
+    proxyToken: OPENCLAW_CONTROL_UI_PROXY_TOKEN,
+    allowedEmailDomain: INTERNAL_EMAIL_DOMAIN,
+  });
 }
 
 function resolveControlUiOperator(request) {
-  const forwardedUser = forwardedControlUiUser(request);
-  if (forwardedUser && hasValidControlUiProxyAuth(request)) {
-    return { user: forwardedUser, source: "trusted-proxy" };
+  const internalUser = resolveInternalStaffUser(request);
+  if (internalUser) {
+    return { user: internalUser, source: "trusted-proxy" };
   }
   const session = readControlUiSession(request);
   if (session) {
     return { user: session.user, source: "cookie" };
   }
   return null;
+}
+
+function resolveApiActor(request, investor) {
+  if (investor) {
+    return {
+      kind: "investor",
+      clientId: investorClientId(investor.inviteId),
+      investor,
+    };
+  }
+
+  const internalUser = resolveInternalStaffUser(request);
+  if (!internalUser) {
+    return null;
+  }
+
+  return {
+    kind: "internal",
+    email: internalUser,
+    clientId: resolveClientId(request),
+  };
+}
+
+function sendNotFound(response) {
+  response.writeHead(404, {
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  response.end("Not found");
 }
 
 function redirect(response, location, statusCode = 307) {
@@ -665,7 +635,7 @@ function proxyUpgradeRequest(request, socket, head) {
     request._controlUiUser = operator.user;
   }
 
-  // Resolve user: investor cookie takes priority, then query param client_id
+  // Resolve user: control UI operator first, then investor session, then trusted internal user.
   let forwardedUser = null;
   if (request._controlUiUser) {
     forwardedUser = request._controlUiUser;
@@ -680,7 +650,17 @@ function proxyUpgradeRequest(request, socket, head) {
     }
   }
   if (!forwardedUser) {
-    forwardedUser = normalizeClientId(requestUrl.searchParams.get("client_id"));
+    const internalUser = resolveInternalStaffUser(request);
+    const clientId = normalizeClientId(requestUrl.searchParams.get("client_id"));
+    if (!internalUser || !clientId) {
+      socket.write(
+        "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nCache-Control: no-store\r\n\r\nAuthentication required",
+      );
+      socket.destroy();
+      return;
+    }
+    request._internalUserEmail = internalUser;
+    forwardedUser = clientId;
   }
   requestUrl.searchParams.delete("client_id");
   const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
@@ -755,8 +735,7 @@ function resolveForwardedUser(request) {
   if (request._investorClientId) {
     return request._investorClientId;
   }
-  const clientId = normalizeClientId(request.headers["x-lexie-client-id"]);
-  return clientId || "";
+  return resolveInternalStaffUser(request) || "";
 }
 
 function sendJson(response, statusCode, payload) {
@@ -874,13 +853,10 @@ async function handleControlUiRequest(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
   const password = resolveControlUiPassword();
   const operator = resolveControlUiOperator(request);
+  const directLoginEnabled = Boolean(password);
 
-  if (!password && (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_LAUNCH_PATH) || pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH))) {
-    sendApiError(
-      response,
-      503,
-      "OPENCLAW_CONTROL_UI_PASSWORD, SETUP_PASSWORD, LEXIE_OPS_TOKEN, or gateway.remote.token must be configured",
-    );
+  if (!directLoginEnabled && !operator && pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_LAUNCH_PATH)) {
+    sendNotFound(response);
     return true;
   }
 
@@ -893,6 +869,10 @@ async function handleControlUiRequest(request, response) {
       redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
       return true;
     }
+    if (!directLoginEnabled) {
+      sendNotFound(response);
+      return true;
+    }
     if (request.method === "GET" || request.method === "HEAD") {
       renderControlUiLoginPage(response);
       return true;
@@ -902,6 +882,10 @@ async function handleControlUiRequest(request, response) {
   }
 
   if (requestUrl.pathname === OPENCLAW_CONTROL_UI_LOGIN_PATH) {
+    if (!directLoginEnabled) {
+      sendNotFound(response);
+      return true;
+    }
     if (request.method !== "POST") {
       sendApiError(response, 405, "Method not allowed");
       return true;
@@ -925,6 +909,10 @@ async function handleControlUiRequest(request, response) {
   }
 
   if (requestUrl.pathname === OPENCLAW_CONTROL_UI_LOGOUT_PATH) {
+    if (!directLoginEnabled) {
+      sendNotFound(response);
+      return true;
+    }
     clearControlUiCookie(response);
     redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH, 303);
     return true;
@@ -932,6 +920,10 @@ async function handleControlUiRequest(request, response) {
 
   if (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH)) {
     if (!operator) {
+      if (!directLoginEnabled) {
+        sendNotFound(response);
+        return true;
+      }
       redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
       return true;
     }
@@ -941,6 +933,10 @@ async function handleControlUiRequest(request, response) {
 
   if (requestUrl.pathname === "/api/openclaw/control-ui/authorize") {
     if (!operator) {
+      if (!directLoginEnabled) {
+        sendNotFound(response);
+        return true;
+      }
       sendApiError(response, 401, "Control UI login required");
       return true;
     }
@@ -952,6 +948,10 @@ async function handleControlUiRequest(request, response) {
 
   if (requestUrl.pathname === "/api/openclaw/control-ui/launch") {
     if (!operator) {
+      if (!directLoginEnabled) {
+        sendNotFound(response);
+        return true;
+      }
       redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
       return true;
     }
@@ -1032,6 +1032,7 @@ async function handleApiRequest(request, response) {
   if (investor) {
     request._investorClientId = investorClientId(investor.inviteId);
   }
+  const apiActor = resolveApiActor(request, investor);
 
   // --- Auth routes ---
   if (requestUrl.pathname === "/api/auth/me") {
@@ -1049,8 +1050,7 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
-    const clientId = resolveClientId(request);
-    if (clientId) {
+    if (apiActor?.kind === "internal") {
       sendJson(response, 200, { type: "internal" });
       return true;
     }
@@ -1158,6 +1158,10 @@ async function handleApiRequest(request, response) {
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/agent/chat-capabilities") {
+    if (!apiActor) {
+      sendApiError(response, 401, "Not authenticated");
+      return true;
+    }
     sendJson(response, 200, buildChatCapabilities());
     return true;
   }
@@ -1202,7 +1206,7 @@ async function handleApiRequest(request, response) {
       agent,
       systemPrompt,
       userPrompt,
-      gatewayToken: process.env.OPENCLAW_GATEWAY_TOKEN || "",
+      gatewayToken: OPENCLAW_GATEWAY_REMOTE_TOKEN,
       timeoutMs,
     });
     sendJson(response, 200, { agent, outputText });
@@ -1210,9 +1214,11 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === "/api/sessions") {
-    const clientId = investor
-      ? investorClientId(investor.inviteId)
-      : resolveClientId(request);
+    if (!apiActor) {
+      sendApiError(response, 401, "Not authenticated");
+      return true;
+    }
+    const clientId = apiActor.clientId;
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
@@ -1247,7 +1253,7 @@ async function handleApiRequest(request, response) {
         return true;
       }
 
-      const agentId = investor ? INVESTOR_AGENT_ID : OPENCLAW_AGENT_ID;
+      const agentId = apiActor.kind === "investor" ? INVESTOR_AGENT_ID : OPENCLAW_AGENT_ID;
       const created = await createSession(sessionPool, {
         clientId,
         name: body.name || DEFAULT_SESSION_NAME,
@@ -1268,9 +1274,11 @@ async function handleApiRequest(request, response) {
       return true;
     }
 
-    const clientId = investor
-      ? investorClientId(investor.inviteId)
-      : resolveClientId(request);
+    if (!apiActor) {
+      sendApiError(response, 401, "Not authenticated");
+      return true;
+    }
+    const clientId = apiActor.clientId;
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
@@ -1296,9 +1304,11 @@ async function handleApiRequest(request, response) {
 
   const sessionMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (sessionMatch) {
-    const clientId = investor
-      ? investorClientId(investor.inviteId)
-      : resolveClientId(request);
+    if (!apiActor) {
+      sendApiError(response, 401, "Not authenticated");
+      return true;
+    }
+    const clientId = apiActor.clientId;
     if (!clientId) {
       sendApiError(response, 400, "A valid X-Lexie-Client-Id header is required");
       return true;
