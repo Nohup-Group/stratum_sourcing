@@ -848,7 +848,9 @@ function proxyUpgradeRequest(request, socket, head) {
     if (forwardedUser) {
       filteredHeaders.push(["X-Forwarded-User", forwardedUser]);
     }
-    if ((isControlUiUpgrade || request._internalUserEmail) && OPENCLAW_GATEWAY_REMOTE_TOKEN) {
+    const injectGatewayAuth = (isControlUiUpgrade || request._internalUserEmail) && OPENCLAW_GATEWAY_REMOTE_TOKEN;
+    log(`ws-upgrade diagnostic path=${upstreamPath} isControlUi=${isControlUiUpgrade} internalEmail=${!!request._internalUserEmail} controlUiUser=${!!request._controlUiUser} forwardedUser=${forwardedUser || "none"} injectAuth=${!!injectGatewayAuth}`);
+    if (injectGatewayAuth) {
       filteredHeaders.push(["Authorization", `Bearer ${OPENCLAW_GATEWAY_REMOTE_TOKEN}`]);
     }
     for (const [headerName, headerValue] of filteredHeaders) {
