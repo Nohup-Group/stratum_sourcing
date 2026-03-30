@@ -188,6 +188,7 @@ async function patchOpenClawConfig() {
   const gatewayAuth = ensureObject(gateway, "auth");
   const gatewayTrustedProxy = ensureObject(gatewayAuth, "trustedProxy");
   const gatewayControlUi = ensureObject(gateway, "controlUi");
+  const gatewayRemote = ensureObject(gateway, "remote");
   const memorySearch = ensureObject(defaults, "memorySearch");
   const experimental = ensureObject(memorySearch, "experimental");
   const remote = ensureObject(memorySearch, "remote");
@@ -278,11 +279,18 @@ async function patchOpenClawConfig() {
 
   session.dmScope = "per-channel-peer";
 
-  gatewayAuth.mode = "token";
-  gatewayAuth.token = ensureGatewayToken(gatewayAuth.token);
+  const stableGatewayToken = ensureGatewayToken(gatewayAuth.token || gatewayRemote.token);
+  gatewayAuth.mode = "trusted-proxy";
+  delete gatewayAuth.token;
   delete gatewayAuth.password;
   gatewayTrustedProxy.userHeader = "x-forwarded-user";
   gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
+  gatewayTrustedProxy.allowUsers = [
+    process.env.OPENCLAW_CONTROL_UI_USER || "superadmin@lexie.local",
+  ];
+  gatewayRemote.token = stableGatewayToken;
+  gatewayControlUi.basePath =
+    process.env.OPENCLAW_CONTROL_UI_BASE_PATH || "/openclaw/ui";
 
   for (const origin of splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS)) {
     configuredOrigins.add(origin);

@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const http = require("http");
 const net = require("net");
 const { spawn } = require("child_process");
@@ -43,6 +44,22 @@ const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || DEFAULT_AGENT_ID;
 const INVESTOR_AGENT_ID = "investor";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const LEXIE_OPS_TOKEN = process.env.LEXIE_OPS_TOKEN || "";
+const OPENCLAW_CONTROL_UI_BASE_PATH = normalizeBasePath(
+  process.env.OPENCLAW_CONTROL_UI_BASE_PATH || "/openclaw/ui",
+);
+const OPENCLAW_CONTROL_UI_LAUNCH_PATH = normalizeBasePath(
+  process.env.OPENCLAW_CONTROL_UI_LAUNCH_PATH || "/openclaw",
+);
+const OPENCLAW_CONTROL_UI_LOGIN_PATH = `${OPENCLAW_CONTROL_UI_LAUNCH_PATH}/login`;
+const OPENCLAW_CONTROL_UI_LOGOUT_PATH = `${OPENCLAW_CONTROL_UI_LAUNCH_PATH}/logout`;
+const OPENCLAW_CONTROL_UI_COOKIE_NAME =
+  process.env.OPENCLAW_CONTROL_UI_COOKIE_NAME || "lexie_openclaw_ui";
+const OPENCLAW_CONTROL_UI_USER =
+  process.env.OPENCLAW_CONTROL_UI_USER || "superadmin@lexie.local";
+const OPENCLAW_CONTROL_UI_COOKIE_TTL_MS = parseInteger(
+  process.env.OPENCLAW_CONTROL_UI_COOKIE_TTL_MS || "604800000",
+  604800000,
+);
 const LISTEN_HOST = process.env.LISTEN_HOST || "0.0.0.0";
 const GATEWAY_STOP_TIMEOUT_MS = parseInteger(
   process.env.GATEWAY_STOP_TIMEOUT_MS || "15000",
@@ -64,6 +81,14 @@ const pool = DATABASE_URL ? new Pool(createPgPoolConfig(DATABASE_URL)) : null;
 function parseInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeBasePath(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed === "/") {
+    return "/";
+  }
+  return `/${trimmed.replace(/^\/+/, "").replace(/\/+$/, "")}`;
 }
 
 function createPgPoolConfig(connectionString) {
@@ -88,6 +113,224 @@ function log(message) {
 
 function logError(message) {
   process.stderr.write(`[lexie-new] ${message}\n`);
+}
+
+function pathMatches(pathname, basePath) {
+  if (basePath === "/") {
+    return pathname === "/";
+  }
+  return pathname === basePath || pathname.startsWith(`${basePath}/`);
+}
+
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (typeof cookieHeader !== "string") {
+    return cookies;
+  }
+  for (const pair of cookieHeader.split(";")) {
+    const separatorIndex = pair.indexOf("=");
+    if (separatorIndex < 0) {
+      continue;
+    }
+    const key = pair.slice(0, separatorIndex).trim();
+    const value = pair.slice(separatorIndex + 1).trim();
+    cookies[key] = value;
+  }
+  return cookies;
+}
+
+function readGatewayConfig() {
+  try {
+    return JSON.parse(require("fs").readFileSync(`${OPENCLAW_STATE_DIR}/openclaw.json`, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function resolveControlUiPassword() {
+  const direct = process.env.OPENCLAW_CONTROL_UI_PASSWORD || process.env.SETUP_PASSWORD;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  const config = readGatewayConfig();
+  const remoteToken =
+    config &&
+    config.gateway &&
+    config.gateway.remote &&
+    typeof config.gateway.remote.token === "string"
+      ? config.gateway.remote.token.trim()
+      : "";
+  if (remoteToken) {
+    return remoteToken;
+  }
+  if (LEXIE_OPS_TOKEN.trim()) {
+    return LEXIE_OPS_TOKEN.trim();
+  }
+  return "";
+}
+
+function resolveControlUiCookieSecret(password) {
+  const explicit = process.env.OPENCLAW_CONTROL_UI_COOKIE_SECRET;
+  if (typeof explicit === "string" && explicit.trim()) {
+    return explicit.trim();
+  }
+  return password;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function createSignedControlUiSession(secret, user) {
+  const payload = {
+    user,
+    exp: Date.now() + OPENCLAW_CONTROL_UI_COOKIE_TTL_MS,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifySignedControlUiSession(secret, token) {
+  if (!secret || typeof token !== "string") {
+    return null;
+  }
+  const separatorIndex = token.lastIndexOf(".");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+  const encodedPayload = token.slice(0, separatorIndex);
+  const signature = token.slice(separatorIndex + 1);
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  if (signature !== expected) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    );
+    if (!payload || typeof payload !== "object" || typeof payload.user !== "string") {
+      return null;
+    }
+    if (typeof payload.exp !== "number" || payload.exp <= Date.now()) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function setControlUiCookie(response, value, maxAgeSeconds) {
+  response.setHeader(
+    "Set-Cookie",
+    `${OPENCLAW_CONTROL_UI_COOKIE_NAME}=${value}; HttpOnly; Secure; SameSite=Lax; Path=${OPENCLAW_CONTROL_UI_LAUNCH_PATH}; Max-Age=${maxAgeSeconds}`,
+  );
+}
+
+function clearControlUiCookie(response) {
+  response.setHeader(
+    "Set-Cookie",
+    `${OPENCLAW_CONTROL_UI_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=${OPENCLAW_CONTROL_UI_LAUNCH_PATH}; Max-Age=0`,
+  );
+}
+
+function readControlUiSession(request) {
+  const password = resolveControlUiPassword();
+  const secret = resolveControlUiCookieSecret(password);
+  if (!password || !secret) {
+    return null;
+  }
+  const cookies = parseCookies(request.headers.cookie);
+  const token = cookies[OPENCLAW_CONTROL_UI_COOKIE_NAME];
+  return verifySignedControlUiSession(secret, token);
+}
+
+function redirect(response, location, statusCode = 307) {
+  response.writeHead(statusCode, {
+    location,
+    "cache-control": "no-store",
+  });
+  response.end();
+}
+
+function renderControlUiLoginPage(response, { errorMessage = "" } = {}) {
+  const escapedError = errorMessage ? `<p class="error">${escapeHtml(errorMessage)}</p>` : "";
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lexie Control UI</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0e1117;
+        color: #f5f7fb;
+        font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      form {
+        width: min(420px, calc(100vw - 32px));
+        padding: 28px;
+        border-radius: 18px;
+        background: rgba(20, 25, 34, 0.96);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      }
+      h1 { margin: 0 0 8px; font-size: 28px; }
+      p { margin: 0 0 18px; color: #c6cfdb; }
+      label { display: block; margin-bottom: 8px; font-weight: 600; }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid #334155;
+        background: #0f172a;
+        color: inherit;
+        margin-bottom: 14px;
+      }
+      button {
+        width: 100%;
+        padding: 12px 14px;
+        border: 0;
+        border-radius: 12px;
+        background: #ff6161;
+        color: white;
+        font: inherit;
+        cursor: pointer;
+      }
+      .error { color: #ff9c9c; margin-bottom: 14px; }
+    </style>
+  </head>
+  <body>
+    <form method="post" action="${OPENCLAW_CONTROL_UI_LOGIN_PATH}">
+      <h1>Lexie Control UI</h1>
+      <p>Enter the control password to open the proxied OpenClaw UI.</p>
+      ${escapedError}
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Open Control UI</button>
+    </form>
+  </body>
+</html>`;
+  response.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  response.end(html);
 }
 
 async function ensureSessionStore() {
@@ -331,11 +574,29 @@ function proxyUpgradeRequest(request, socket, head) {
   }
 
   const requestUrl = new URL(request.url, "http://127.0.0.1");
+  const isControlUiUpgrade = pathMatches(
+    requestUrl.pathname,
+    OPENCLAW_CONTROL_UI_BASE_PATH,
+  );
+  if (isControlUiUpgrade) {
+    const session = readControlUiSession(request);
+    if (!session) {
+      socket.write(
+        "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nCache-Control: no-store\r\n\r\nControl UI login required",
+      );
+      socket.destroy();
+      return;
+    }
+    request._controlUiUser = session.user;
+  }
 
   // Resolve user: investor cookie takes priority, then query param client_id
   let forwardedUser = null;
+  if (request._controlUiUser) {
+    forwardedUser = request._controlUiUser;
+  }
   const investorJwt = getInvestorJwt(request);
-  if (investorJwt) {
+  if (!forwardedUser && investorJwt) {
     // Synchronous JWT verify (no DB check) for WebSocket upgrade hot path
     const { verifyJwt } = require("./auth");
     const payload = verifyJwt(investorJwt);
@@ -412,6 +673,9 @@ function clientAddress(request) {
 }
 
 function resolveForwardedUser(request) {
+  if (request._controlUiUser) {
+    return request._controlUiUser;
+  }
   // Investor cookie-derived client ID is set by the auth middleware.
   if (request._investorClientId) {
     return request._investorClientId;
@@ -470,6 +734,26 @@ async function readJsonBody(request) {
   return JSON.parse(raw);
 }
 
+async function readFormBody(request) {
+  const body = await readJsonBodyLikeRaw(request);
+  return new URLSearchParams(body);
+}
+
+async function readJsonBodyLikeRaw(request) {
+  const chunks = [];
+  let totalLength = 0;
+
+  for await (const chunk of request) {
+    totalLength += chunk.length;
+    if (totalLength > 1024 * 1024) {
+      throw new Error("Request body too large");
+    }
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function resolveClientId(request) {
   return normalizeClientId(request.headers["x-lexie-client-id"]);
 }
@@ -509,6 +793,99 @@ async function getSessionPool(response) {
   }
 
   return pool;
+}
+
+async function handleControlUiRequest(request, response) {
+  const requestUrl = new URL(request.url, "http://127.0.0.1");
+  const password = resolveControlUiPassword();
+
+  if (!password && (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_LAUNCH_PATH) || pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH))) {
+    sendApiError(
+      response,
+      503,
+      "OPENCLAW_CONTROL_UI_PASSWORD, SETUP_PASSWORD, LEXIE_OPS_TOKEN, or gateway.remote.token must be configured",
+    );
+    return true;
+  }
+
+  if (
+    requestUrl.pathname === OPENCLAW_CONTROL_UI_LAUNCH_PATH ||
+    requestUrl.pathname === `${OPENCLAW_CONTROL_UI_LAUNCH_PATH}/`
+  ) {
+    const session = readControlUiSession(request);
+    if (session) {
+      redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
+      return true;
+    }
+    if (request.method === "GET" || request.method === "HEAD") {
+      renderControlUiLoginPage(response);
+      return true;
+    }
+    sendApiError(response, 405, "Method not allowed");
+    return true;
+  }
+
+  if (requestUrl.pathname === OPENCLAW_CONTROL_UI_LOGIN_PATH) {
+    if (request.method !== "POST") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+    const rawBody = await readJsonBodyLikeRaw(request);
+    const form = new URLSearchParams(rawBody);
+    const submittedPassword = (form.get("password") || "").trim();
+    if (submittedPassword !== password) {
+      renderControlUiLoginPage(response, { errorMessage: "Incorrect password." });
+      return true;
+    }
+    const secret = resolveControlUiCookieSecret(password);
+    const token = createSignedControlUiSession(secret, OPENCLAW_CONTROL_UI_USER);
+    setControlUiCookie(
+      response,
+      token,
+      Math.floor(OPENCLAW_CONTROL_UI_COOKIE_TTL_MS / 1000),
+    );
+    redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
+    return true;
+  }
+
+  if (requestUrl.pathname === OPENCLAW_CONTROL_UI_LOGOUT_PATH) {
+    clearControlUiCookie(response);
+    redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH, 303);
+    return true;
+  }
+
+  if (pathMatches(requestUrl.pathname, OPENCLAW_CONTROL_UI_BASE_PATH)) {
+    const session = readControlUiSession(request);
+    if (!session) {
+      redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
+      return true;
+    }
+    request._controlUiUser = session.user;
+    return false;
+  }
+
+  if (requestUrl.pathname === "/api/openclaw/control-ui/authorize") {
+    const session = readControlUiSession(request);
+    if (!session) {
+      sendApiError(response, 401, "Control UI login required");
+      return true;
+    }
+    response.writeHead(204, { "cache-control": "no-store" });
+    response.end();
+    return true;
+  }
+
+  if (requestUrl.pathname === "/api/openclaw/control-ui/launch") {
+    const session = readControlUiSession(request);
+    if (!session) {
+      redirect(response, OPENCLAW_CONTROL_UI_LAUNCH_PATH);
+      return true;
+    }
+    redirect(response, OPENCLAW_CONTROL_UI_BASE_PATH);
+    return true;
+  }
+
+  return false;
 }
 
 function buildChatCapabilities() {
@@ -932,6 +1309,10 @@ const server = http.createServer((request, response) => {
   }
 
   Promise.resolve(handleInviteRedeem(request, response))
+    .then((handled) => {
+      if (handled) return true;
+      return handleControlUiRequest(request, response);
+    })
     .then((handled) => {
       if (handled) return true;
       return handleApiRequest(request, response);
