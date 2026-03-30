@@ -431,6 +431,7 @@ async function patchOpenClawConfig() {
   gatewayRemote.token = stableGatewayToken;
   gatewayControlUi.basePath =
     process.env.OPENCLAW_CONTROL_UI_BASE_PATH || "/openclaw/ui";
+  gatewayControlUi.dangerouslyDisableDeviceAuth = true;
 
   for (const origin of splitAllowedOrigins(process.env.OPENCLAW_ALLOWED_ORIGINS)) {
     configuredOrigins.add(origin);
