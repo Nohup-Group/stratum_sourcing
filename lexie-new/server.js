@@ -477,7 +477,10 @@ function wait(ms) {
 }
 
 function createGatewayEnv() {
-  const { OPENCLAW_GATEWAY_TOKEN: _ignoredGatewayToken, ...gatewayEnv } = process.env;
+  const gatewayEnv = { ...process.env };
+  if (OPENCLAW_GATEWAY_REMOTE_TOKEN) {
+    gatewayEnv.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_REMOTE_TOKEN;
+  }
   return {
     ...gatewayEnv,
     HOME: OPENCLAW_HOME,

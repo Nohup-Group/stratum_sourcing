@@ -5,7 +5,7 @@ Standalone OpenClaw Railway service for the Lexie migration. This service is sep
 ## Service shape
 
 - Base image: `node:22-bookworm`
-- OpenClaw pinned to `2026.3.13`
+- OpenClaw pinned to `2026.3.28`
 - `gog` pinned to `v0.12.0`
 - Public wrapper port: `PORT` (Railway)
 - Internal loopback gateway port: `INTERNAL_GATEWAY_PORT` (defaults to `18789`)
@@ -64,7 +64,7 @@ The backend still accepts legacy `OPENCLAW_GATEWAY_TOKEN` as a fallback input fo
 Bring the new service up once with the empty volume and confirm:
 
 - `/healthz` becomes healthy
-- `openclaw --version` reports `2026.3.13`
+- `openclaw --version` reports `2026.3.28`
 - `gog version` reports `v0.12.0`
 - the wrapper restarts OpenClaw if the child exits
 
@@ -112,6 +112,16 @@ Bootstrap state is tracked in `/data/.lexie-bootstrap-state.json` so future migr
 - Fallback default model: `openai-direct/gpt-5.4` when Codex auth is absent but `OPENAI_API_KEY` is available
 - Default thinking level: `high`
 - Memory embeddings stay on OpenAI with `text-embedding-3-small`
+
+## OpenClaw 2026.3.28 notes
+
+- Official npm `latest` tag as of March 30, 2026 is `2026.3.28`.
+- Relevant upgrade note: newer OpenClaw builds harden local-direct `trusted-proxy` fallback behavior. Lexie already writes an explicit gateway token into config and now also passes that token into the child gateway env so browser and relay helpers can resolve it reliably.
+- Relevant upgrade note: config and doctor no longer auto-migrate very old configs. Lexie keeps patching the live `/data/.openclaw/openclaw.json` in place on every boot, so the service should stay on a current config shape instead of relying on old auto-migrations.
+- Not expected to affect Lexie:
+  - `qwen-portal-auth` removal
+  - QMD-specific memory changes, because Lexie uses OpenAI embeddings instead of QMD
+  - `/fast` behavior changes, because Lexie does not force fast mode
 
 ## Cutover
 
