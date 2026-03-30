@@ -730,6 +730,9 @@ function proxyHttpRequest(clientRequest, clientResponse) {
   if (forwardedUser) {
     forwardedHeaders["x-forwarded-user"] = forwardedUser;
   }
+  if (clientRequest._controlUiUser && OPENCLAW_GATEWAY_REMOTE_TOKEN) {
+    forwardedHeaders["authorization"] = `Bearer ${OPENCLAW_GATEWAY_REMOTE_TOKEN}`;
+  }
 
   const upstreamRequest = http.request(
     {
@@ -844,6 +847,9 @@ function proxyUpgradeRequest(request, socket, head) {
     filteredHeaders.push(["X-Forwarded-Proto", "https"]);
     if (forwardedUser) {
       filteredHeaders.push(["X-Forwarded-User", forwardedUser]);
+    }
+    if (isControlUiUpgrade && OPENCLAW_GATEWAY_REMOTE_TOKEN) {
+      filteredHeaders.push(["Authorization", `Bearer ${OPENCLAW_GATEWAY_REMOTE_TOKEN}`]);
     }
     for (const [headerName, headerValue] of filteredHeaders) {
       rawRequest += `${headerName}: ${headerValue}\r\n`;
@@ -1099,6 +1105,15 @@ async function handleControlUiRequest(request, response) {
   }
 
   if (requestUrl.pathname === "/api/openclaw/control-ui/launch") {
+    // Temporary diagnostic logging for /openclaw auth debugging
+    const diagHeaders = {
+      "x-openclaw-control-ui-auth": !!request.headers["x-openclaw-control-ui-auth"],
+      "x-forwarded-user": request.headers["x-forwarded-user"] || "(absent)",
+      "cf-access-authenticated-user-email": request.headers["cf-access-authenticated-user-email"] || "(absent)",
+      "x-agent-user-email": request.headers["x-agent-user-email"] || "(absent)",
+    };
+    log(`openclaw/launch diagnostic operator=${operator ? operator.source : "none"} user=${operator?.user || "none"} directLoginEnabled=${directLoginEnabled} headers=${JSON.stringify(diagHeaders)}`);
+
     if (!operator) {
       if (!directLoginEnabled) {
         sendNotFound(response);
@@ -1217,6 +1232,17 @@ async function handleApiRequest(request, response) {
       sendApiError(response, 405, "Method not allowed");
       return true;
     }
+
+    // Temporary diagnostic logging for internal auth debugging
+    const diagHeaders = {
+      "x-openclaw-control-ui-auth": !!request.headers["x-openclaw-control-ui-auth"],
+      "x-forwarded-user": request.headers["x-forwarded-user"] || "(absent)",
+      "cf-access-authenticated-user-email": request.headers["cf-access-authenticated-user-email"] || "(absent)",
+      "x-agent-user-email": request.headers["x-agent-user-email"] || "(absent)",
+      "cf-access-jwt-assertion": !!request.headers["cf-access-jwt-assertion"],
+    };
+    const proxyTokenMatch = request.headers["x-openclaw-control-ui-auth"] === OPENCLAW_CONTROL_UI_PROXY_TOKEN;
+    log(`auth/me diagnostic headers=${JSON.stringify(diagHeaders)} proxyTokenMatch=${proxyTokenMatch} investorResolved=${!!investor} actorKind=${apiActor?.kind || "none"}`);
 
     if (investor) {
       sendJson(response, 200, authPayloadForActor(apiActor, investor));
