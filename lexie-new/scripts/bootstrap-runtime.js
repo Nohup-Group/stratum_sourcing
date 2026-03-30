@@ -33,8 +33,8 @@ const ROOT_FILES = [
   "HEARTBEAT.md",
   "MEMORY.md",
 ];
-const SEEDED_DIRS = ["knowledge"];
-const MANAGED_DIRS = ["skills"];
+const SEEDED_DIRS = ["knowledge", "skills"];
+const MANAGED_DIRS = [];
 
 function log(message) {
   process.stdout.write(`[lexie-bootstrap] ${message}\n`);
@@ -271,8 +271,8 @@ const INVESTOR_ROOT_FILES = [
   "TOOLS.md",
   "MEMORY.md",
 ];
-const INVESTOR_SEEDED_DIRS = ["knowledge"];
-const INVESTOR_MANAGED_DIRS = ["skills"];
+const INVESTOR_SEEDED_DIRS = ["knowledge", "skills"];
+const INVESTOR_MANAGED_DIRS = [];
 
 async function syncInvestorWorkspace() {
   const startedAt = Date.now();
