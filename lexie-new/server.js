@@ -133,6 +133,18 @@ function logError(message) {
   process.stderr.write(`[lexie-new] ${message}\n`);
 }
 
+function logStartupContext() {
+  log(
+    `startup context public=${LISTEN_HOST}:${PORT} internalGateway=${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT} home=${OPENCLAW_HOME} state=${OPENCLAW_STATE_DIR} workspace=${OPENCLAW_WORKSPACE_DIR} readyTimeoutMs=${GATEWAY_READY_TIMEOUT_MS} backgroundReadyTimeoutMs=${GATEWAY_READY_BACKGROUND_TIMEOUT_MS} stopTimeoutMs=${GATEWAY_STOP_TIMEOUT_MS}`,
+  );
+  log(
+    `startup auth railwayDomain=${process.env.RAILWAY_PUBLIC_DOMAIN || "unset"} controlUiBasePath=${OPENCLAW_CONTROL_UI_BASE_PATH} controlUiLaunchPath=${OPENCLAW_CONTROL_UI_LAUNCH_PATH} proxyTokenConfigured=${OPENCLAW_CONTROL_UI_PROXY_TOKEN ? "yes" : "no"} remoteTokenConfigured=${OPENCLAW_GATEWAY_REMOTE_TOKEN ? "yes" : "no"}`,
+  );
+  log(
+    `startup database configured=${DATABASE_URL ? "yes" : "no"} internalEmailDomains=${INTERNAL_EMAIL_DOMAINS.join(",") || "none"}`,
+  );
+}
+
 function pathMatches(pathname, basePath) {
   if (basePath === "/") {
     return pathname === "/";
@@ -443,6 +455,7 @@ function renderControlUiLoginPage(response, { errorMessage = "" } = {}) {
 async function ensureSessionStore() {
   if (!pool) {
     sessionStoreReady = false;
+    logError("session store unavailable: DATABASE_URL is not configured");
     return;
   }
 
@@ -525,22 +538,27 @@ function runOpenClawCommand(args, { timeoutMs = GATEWAY_STOP_TIMEOUT_MS } = {}) 
 }
 
 async function stopGateway(reason, { tolerateFailure = false } = {}) {
+  const startedAt = Date.now();
   log(`stopping openclaw gateway (${reason})`);
   try {
     await runOpenClawCommand(["gateway", "stop"]);
+    log(`openclaw gateway stop finished (${reason}) after ${Date.now() - startedAt}ms`);
   } catch (error) {
     if (!tolerateFailure) {
       throw error;
     }
     logError(
-      `best-effort gateway stop failed (${reason}): ${error.stack || error.message}`,
+      `best-effort gateway stop failed (${reason}) after ${Date.now() - startedAt}ms: ${error.stack || error.message}`,
     );
   }
 }
 
 async function probeGateway(timeoutMs = 60000) {
   const startedAt = Date.now();
+  let attempts = 0;
+  let lastLoggedAt = 0;
   while (Date.now() - startedAt < timeoutMs) {
+    attempts += 1;
     const ready = await new Promise((resolve) => {
       const socket = net.connect(
         {
@@ -562,12 +580,26 @@ async function probeGateway(timeoutMs = 60000) {
     });
 
     if (ready) {
+      log(
+        `gateway probe succeeded attempts=${attempts} elapsedMs=${Date.now() - startedAt} host=${INTERNAL_GATEWAY_HOST} port=${INTERNAL_GATEWAY_PORT}`,
+      );
       return true;
+    }
+
+    const elapsedMs = Date.now() - startedAt;
+    if (attempts === 1 || elapsedMs - lastLoggedAt >= 10000) {
+      lastLoggedAt = elapsedMs;
+      log(
+        `gateway probe waiting attempts=${attempts} elapsedMs=${elapsedMs} host=${INTERNAL_GATEWAY_HOST} port=${INTERNAL_GATEWAY_PORT}`,
+      );
     }
 
     await wait(500);
   }
 
+  logError(
+    `gateway probe timed out attempts=${attempts} elapsedMs=${Date.now() - startedAt} host=${INTERNAL_GATEWAY_HOST} port=${INTERNAL_GATEWAY_PORT}`,
+  );
   return false;
 }
 
@@ -588,10 +620,14 @@ async function continueGatewayReadinessMonitoring(launchGeneration) {
 
 async function startGateway() {
   if (shuttingDown || gatewayProcess) {
+    log(
+      `startGateway skipped shuttingDown=${shuttingDown ? "yes" : "no"} gatewayProcess=${gatewayProcess ? "present" : "absent"}`,
+    );
     return;
   }
 
   const launchGeneration = ++gatewayLaunchGeneration;
+  const startedAt = Date.now();
   gatewayReady = false;
   await stopGateway("pre-start cleanup", { tolerateFailure: true });
 
@@ -606,15 +642,20 @@ async function startGateway() {
   ];
 
   log(
-    `starting openclaw gateway on ${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`,
+    `starting openclaw gateway generation=${launchGeneration} on ${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`,
   );
   gatewayProcess = spawn("openclaw", args, {
     env: createGatewayEnv(),
     stdio: "inherit",
   });
+  log(
+    `openclaw gateway spawned generation=${launchGeneration} pid=${gatewayProcess.pid || "unknown"} args=${args.join(" ")}`,
+  );
 
   gatewayProcess.on("exit", (code, signal) => {
-    logError(`gateway exited with code=${code} signal=${signal}`);
+    logError(
+      `gateway exited generation=${launchGeneration} pid=${gatewayProcess?.pid || "unknown"} code=${code} signal=${signal} uptimeMs=${Date.now() - startedAt}`,
+    );
     gatewayProcess = null;
 
     if (!shuttingDown) {
@@ -627,7 +668,7 @@ async function startGateway() {
           const stillReachable = await probeGateway(3000);
           if (stillReachable) {
             gatewayReady = true;
-            log("gateway launcher exited but gateway is still reachable");
+            log(`gateway launcher exited but gateway is still reachable generation=${launchGeneration}`);
             return;
           }
 
@@ -651,14 +692,19 @@ async function startGateway() {
 
   const ready = await probeGateway(GATEWAY_READY_TIMEOUT_MS);
   if (launchGeneration !== gatewayLaunchGeneration) {
+    log(
+      `ignoring readiness result for stale generation=${launchGeneration} currentGeneration=${gatewayLaunchGeneration}`,
+    );
     return;
   }
 
   gatewayReady = ready;
   if (ready) {
-    log("gateway ready");
+    log(`gateway ready generation=${launchGeneration} startupMs=${Date.now() - startedAt}`);
   } else {
-    logError("gateway did not become ready before timeout");
+    logError(
+      `gateway did not become ready before timeout generation=${launchGeneration} startupMs=${Date.now() - startedAt}`,
+    );
     continueGatewayReadinessMonitoring(launchGeneration).catch((error) => {
       logError(`extended gateway readiness probe failed: ${error.stack || error.message}`);
     });
@@ -1551,6 +1597,8 @@ const server = http.createServer((request, response) => {
 });
 
 server.on("upgrade", proxyUpgradeRequest);
+
+logStartupContext();
 
 server.listen(PORT, LISTEN_HOST, () => {
   log(`wrapper listening on ${LISTEN_HOST}:${PORT}`);

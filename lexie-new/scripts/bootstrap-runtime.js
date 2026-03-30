@@ -36,6 +36,14 @@ const ROOT_FILES = [
 const SEEDED_DIRS = ["knowledge"];
 const MANAGED_DIRS = ["skills"];
 
+function log(message) {
+  process.stdout.write(`[lexie-bootstrap] ${message}\n`);
+}
+
+function logDuration(label, startedAt) {
+  log(`${label} (${Date.now() - startedAt}ms)`);
+}
+
 function splitAllowedOrigins(raw) {
   if (typeof raw !== "string") {
     return [];
@@ -226,6 +234,8 @@ async function shouldGenerateBackfill(state) {
 }
 
 async function syncWorkspace() {
+  const startedAt = Date.now();
+  log(`syncWorkspace start source=${SOURCE_WORKSPACE} target=${WORKSPACE_ROOT}`);
   for (const fileName of ROOT_FILES) {
     await copyFileIfMissing(
       path.join(SOURCE_WORKSPACE, fileName),
@@ -251,6 +261,7 @@ async function syncWorkspace() {
   if (await pathExists(bootstrapPath)) {
     await fs.rm(bootstrapPath, { force: true });
   }
+  logDuration("syncWorkspace complete", startedAt);
 }
 
 const INVESTOR_ROOT_FILES = [
@@ -264,7 +275,10 @@ const INVESTOR_SEEDED_DIRS = ["knowledge"];
 const INVESTOR_MANAGED_DIRS = ["skills"];
 
 async function syncInvestorWorkspace() {
+  const startedAt = Date.now();
+  log(`syncInvestorWorkspace start source=${SOURCE_INVESTOR_WORKSPACE} target=${INVESTOR_WORKSPACE_ROOT}`);
   if (!(await pathExists(SOURCE_INVESTOR_WORKSPACE))) {
+    log("syncInvestorWorkspace skipped (source workspace missing)");
     return;
   }
 
@@ -288,9 +302,12 @@ async function syncInvestorWorkspace() {
       await replaceManagedDir(src, path.join(INVESTOR_WORKSPACE_ROOT, dirName));
     }
   }
+  logDuration("syncInvestorWorkspace complete", startedAt);
 }
 
 async function patchOpenClawConfig() {
+  const startedAt = Date.now();
+  log(`patchOpenClawConfig start path=${CONFIG_PATH}`);
   const config = await readJsonSafe(CONFIG_PATH, {});
   const agents = ensureObject(config, "agents");
   const defaults = ensureObject(agents, "defaults");
@@ -446,10 +463,21 @@ async function patchOpenClawConfig() {
 
   await ensureDir(path.dirname(CONFIG_PATH));
   await writeJsonAtomic(CONFIG_PATH, config);
+  log(
+    `patchOpenClawConfig complete model=${defaultModel.primary || "unset"} thinking=${defaults.thinkingDefault || "unset"} gatewayAuthMode=${gatewayAuth.mode || "unset"} agents=${Array.isArray(agents.list) ? agents.list.map((agent) => agent.id).join(",") : "none"}`,
+  );
+  logDuration("patchOpenClawConfig duration", startedAt);
 }
 
 async function main() {
+  const startedAt = Date.now();
+  log(
+    `bootstrap start app_root=${APP_ROOT} data_root=${DATA_ROOT} workspace_root=${WORKSPACE_ROOT} investor_workspace_root=${INVESTOR_WORKSPACE_ROOT} state_root=${STATE_ROOT}`,
+  );
   const bootstrapState = await readBootstrapState();
+  log(
+    `bootstrap state workspaceSyncVersion=${bootstrapState.workspaceSyncVersion || 0} backfillVersion=${bootstrapState.backfillVersion || 0} updatedAt=${bootstrapState.updatedAt || "never"}`,
+  );
 
   await ensureDir(WORKSPACE_ROOT);
   await ensureDir(INVESTOR_WORKSPACE_ROOT);
@@ -464,10 +492,15 @@ async function main() {
   await syncInvestorWorkspace();
   await patchOpenClawConfig();
   if (await shouldGenerateBackfill(bootstrapState)) {
+    const backfillStartedAt = Date.now();
+    log("generateBackfill start");
     await generateBackfill({
       workspaceRoot: WORKSPACE_ROOT,
       stateRoot: STATE_ROOT,
     });
+    logDuration("generateBackfill complete", backfillStartedAt);
+  } else {
+    log("generateBackfill skipped (state up to date)");
   }
   await writeBootstrapState({
     ...bootstrapState,
@@ -476,9 +509,8 @@ async function main() {
     updatedAt: new Date().toISOString(),
   });
 
-  process.stdout.write(
-    `[lexie-bootstrap] workspace synced to ${WORKSPACE_ROOT} and config patched at ${CONFIG_PATH}\n`,
-  );
+  log(`workspace synced to ${WORKSPACE_ROOT} and config patched at ${CONFIG_PATH}`);
+  logDuration("bootstrap finished", startedAt);
 }
 
 if (require.main === module) {
