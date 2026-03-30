@@ -4,7 +4,7 @@ builder = "dockerfile"
 [deploy]
 startCommand = "./entrypoint.sh"
 healthcheckPath = "/healthz"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 
 [[volumes]]
