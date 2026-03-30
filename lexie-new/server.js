@@ -79,6 +79,14 @@ const GATEWAY_STOP_TIMEOUT_MS = parseInteger(
   process.env.GATEWAY_STOP_TIMEOUT_MS || "15000",
   15000,
 );
+const GATEWAY_READY_TIMEOUT_MS = parseInteger(
+  process.env.GATEWAY_READY_TIMEOUT_MS || "180000",
+  180000,
+);
+const GATEWAY_READY_BACKGROUND_TIMEOUT_MS = parseInteger(
+  process.env.GATEWAY_READY_BACKGROUND_TIMEOUT_MS || "300000",
+  300000,
+);
 const INTERNAL_EMAIL_DOMAINS = parseAllowedInternalEmailDomains(
   process.env.LEXIE_INTERNAL_EMAIL_DOMAINS || DEFAULT_INTERNAL_EMAIL_DOMAINS,
 );
@@ -92,6 +100,7 @@ let sessionStoreError = DATABASE_URL
   ? null
   : new Error("DATABASE_URL is required for the session API");
 let shutdownPromise = null;
+let gatewayLaunchGeneration = 0;
 
 const pool = DATABASE_URL ? new Pool(createPgPoolConfig(DATABASE_URL)) : null;
 
@@ -562,11 +571,27 @@ async function probeGateway(timeoutMs = 60000) {
   return false;
 }
 
+async function continueGatewayReadinessMonitoring(launchGeneration) {
+  const eventuallyReady = await probeGateway(GATEWAY_READY_BACKGROUND_TIMEOUT_MS);
+  if (shuttingDown || launchGeneration !== gatewayLaunchGeneration || !gatewayProcess) {
+    return;
+  }
+
+  if (eventuallyReady) {
+    gatewayReady = true;
+    log("gateway became ready after extended startup delay");
+    return;
+  }
+
+  logError("gateway still not ready after extended startup delay");
+}
+
 async function startGateway() {
   if (shuttingDown || gatewayProcess) {
     return;
   }
 
+  const launchGeneration = ++gatewayLaunchGeneration;
   gatewayReady = false;
   await stopGateway("pre-start cleanup", { tolerateFailure: true });
 
@@ -624,12 +649,19 @@ async function startGateway() {
     gatewayReady = false;
   });
 
-  const ready = await probeGateway();
+  const ready = await probeGateway(GATEWAY_READY_TIMEOUT_MS);
+  if (launchGeneration !== gatewayLaunchGeneration) {
+    return;
+  }
+
   gatewayReady = ready;
   if (ready) {
     log("gateway ready");
   } else {
     logError("gateway did not become ready before timeout");
+    continueGatewayReadinessMonitoring(launchGeneration).catch((error) => {
+      logError(`extended gateway readiness probe failed: ${error.stack || error.message}`);
+    });
   }
 }
 
