@@ -6,6 +6,23 @@ const GATEWAY_CLIENT_ID = "openclaw-control-ui";
 const GATEWAY_CLIENT_MODE = "webchat";
 const GATEWAY_TOOL_EVENTS_CAP = "tool-events";
 const DEFAULT_GATEWAY_WS_PATH = "/api/openclaw/ws";
+
+let cachedGatewayToken: string | null = null;
+
+async function fetchGatewayToken(): Promise<string | null> {
+  if (cachedGatewayToken) return cachedGatewayToken;
+  try {
+    const res = await fetch("/api/gateway-token", { credentials: "same-origin" });
+    if (res.ok) {
+      const data = (await res.json()) as { token?: string };
+      cachedGatewayToken = typeof data.token === "string" ? data.token : null;
+      return cachedGatewayToken;
+    }
+  } catch {
+    // Ignore - token is optional
+  }
+  return null;
+}
 const CHAT_HISTORY_RESULT_TTL_MS = 250;
 const INITIAL_RECONNECT_BACKOFF_MS = 1_500;
 const MAX_RECONNECT_BACKOFF_MS = 30_000;
@@ -397,27 +414,42 @@ export class GatewayClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.connectRequestId) {
       return;
     }
+    void this.sendConnectAsync();
+  }
+
+  private async sendConnectAsync(): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.connectRequestId) {
+      return;
+    }
+    const token = await fetchGatewayToken();
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.connectRequestId) {
+      return;
+    }
     this.connectRequestId = crypto.randomUUID();
+    const params: Record<string, unknown> = {
+      minProtocol: GATEWAY_PROTOCOL_VERSION,
+      maxProtocol: GATEWAY_PROTOCOL_VERSION,
+      client: {
+        id: GATEWAY_CLIENT_ID,
+        version: "ncf-agent-frontend",
+        platform: "web",
+        mode: GATEWAY_CLIENT_MODE,
+      },
+      role: "operator",
+      scopes: ["operator.admin", "operator.read", "operator.write"],
+      caps: [GATEWAY_TOOL_EVENTS_CAP],
+      locale: navigator.language,
+      userAgent: navigator.userAgent,
+    };
+    if (token) {
+      params.auth = { token };
+    }
     this.ws.send(
       JSON.stringify({
         type: "req",
         id: this.connectRequestId,
         method: "connect",
-        params: {
-          minProtocol: GATEWAY_PROTOCOL_VERSION,
-          maxProtocol: GATEWAY_PROTOCOL_VERSION,
-          client: {
-            id: GATEWAY_CLIENT_ID,
-            version: "ncf-agent-frontend",
-            platform: "web",
-            mode: GATEWAY_CLIENT_MODE,
-          },
-          role: "operator",
-          scopes: ["operator.admin", "operator.read", "operator.write"],
-          caps: [GATEWAY_TOOL_EVENTS_CAP],
-          locale: navigator.language,
-          userAgent: navigator.userAgent,
-        },
+        params,
       }),
     );
   }

@@ -1260,6 +1260,19 @@ async function handleApiRequest(request, response) {
     return true;
   }
 
+  if (requestUrl.pathname === "/api/gateway-token") {
+    if (request.method !== "GET") {
+      sendApiError(response, 405, "Method not allowed");
+      return true;
+    }
+    if (apiActor?.kind !== "internal") {
+      sendApiError(response, 401, "Not authenticated");
+      return true;
+    }
+    sendJson(response, 200, { token: OPENCLAW_GATEWAY_REMOTE_TOKEN || null });
+    return true;
+  }
+
   if (requestUrl.pathname === "/api/auth/logout") {
     if (request.method !== "POST") {
       sendApiError(response, 405, "Method not allowed");

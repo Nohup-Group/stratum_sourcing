@@ -428,7 +428,7 @@ async function patchOpenClawConfig() {
   } else {
     delete gatewayTrustedProxy.allowUsers;
   }
-  delete gatewayRemote.token;
+  gatewayRemote.token = stableGatewayToken;
   gatewayControlUi.basePath =
     process.env.OPENCLAW_CONTROL_UI_BASE_PATH || "/openclaw/ui";
 
