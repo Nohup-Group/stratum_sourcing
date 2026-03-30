@@ -2,6 +2,7 @@
 
 const fs = require("fs/promises");
 const path = require("path");
+const crypto = require("crypto");
 
 const { generateBackfill } = require("./generate-backfill");
 
@@ -117,6 +118,16 @@ function appendUnique(array, value) {
     array.push(value);
   }
   return array;
+}
+
+function ensureGatewayToken(currentValue) {
+  if (typeof process.env.OPENCLAW_GATEWAY_TOKEN === "string" && process.env.OPENCLAW_GATEWAY_TOKEN.trim()) {
+    return process.env.OPENCLAW_GATEWAY_TOKEN.trim();
+  }
+  if (typeof currentValue === "string" && currentValue.trim()) {
+    return currentValue.trim();
+  }
+  return crypto.randomBytes(24).toString("hex");
 }
 
 async function syncWorkspace() {
@@ -267,7 +278,9 @@ async function patchOpenClawConfig() {
 
   session.dmScope = "per-channel-peer";
 
-  gatewayAuth.mode = "trusted-proxy";
+  gatewayAuth.mode = "token";
+  gatewayAuth.token = ensureGatewayToken(gatewayAuth.token);
+  delete gatewayAuth.password;
   gatewayTrustedProxy.userHeader = "x-forwarded-user";
   gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
 
