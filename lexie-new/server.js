@@ -815,7 +815,7 @@ function proxyUpgradeRequest(request, socket, head) {
       return;
     }
     request._internalUserEmail = internalUser;
-    forwardedUser = clientId;
+    forwardedUser = internalUser;
   }
   requestUrl.searchParams.delete("client_id");
   const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
