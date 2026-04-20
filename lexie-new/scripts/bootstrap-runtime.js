@@ -432,7 +432,11 @@ async function patchOpenClawConfig() {
 
   const stableGatewayToken = ensureGatewayToken(gatewayAuth.token || gatewayRemote.token);
   gatewayAuth.mode = "trusted-proxy";
-  gatewayAuth.token = stableGatewayToken;
+  // OpenClaw 2026.4.x rejects gateway.auth.token when mode=trusted-proxy
+  // (mutually exclusive: the trusted proxy is the authenticator, no shared
+  // token check is needed). Keep stableGatewayToken available for
+  // gateway.remote.token but do not set auth.token.
+  delete gatewayAuth.token;
   delete gatewayAuth.password;
   gatewayTrustedProxy.userHeader = "x-forwarded-user";
   gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
