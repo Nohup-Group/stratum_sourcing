@@ -431,27 +431,20 @@ async function patchOpenClawConfig() {
   session.dmScope = "per-channel-peer";
 
   const stableGatewayToken = ensureGatewayToken(gatewayAuth.token || gatewayRemote.token);
-  gatewayAuth.mode = "trusted-proxy";
-  // OpenClaw 2026.4.x rejects gateway.auth.token when mode=trusted-proxy
-  // (mutually exclusive: the trusted proxy is the authenticator, no shared
-  // token check is needed). Keep stableGatewayToken available for
-  // gateway.remote.token but do not set auth.token.
-  delete gatewayAuth.token;
+  // OpenClaw 2026.4.x hardened trusted-proxy: it rejects loopback-sourced
+  // requests (reason=trusted_proxy_loopback_source), which is exactly our
+  // topology (wrapper and gateway in the same container, wrapper connects
+  // via 127.0.0.1). Same-host reverse-proxy setups are intended to use
+  // mode=token: the wrapper validates user identity (Cloudflare Access +
+  // OPENCLAW_CONTROL_UI_PROXY_TOKEN) before proxying, then carries a shared
+  // gateway.auth.token into the WebSocket connect message so the gateway
+  // accepts the call with operator scopes.
+  gatewayAuth.mode = "token";
+  gatewayAuth.token = stableGatewayToken;
   delete gatewayAuth.password;
-  gatewayTrustedProxy.userHeader = "x-forwarded-user";
-  gatewayTrustedProxy.requiredHeaders = ["x-forwarded-proto", "x-forwarded-host"];
-  if (typeof process.env.OPENCLAW_TRUSTED_PROXY_ALLOW_USERS === "string") {
-    const allowUsers = process.env.OPENCLAW_TRUSTED_PROXY_ALLOW_USERS
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (allowUsers.length > 0) {
-      gatewayTrustedProxy.allowUsers = allowUsers;
-    } else {
-      delete gatewayTrustedProxy.allowUsers;
-    }
-  } else {
-    delete gatewayTrustedProxy.allowUsers;
+  delete gatewayAuth.trustedProxy;
+  if (gateway.auth && gateway.auth.trustedProxy) {
+    delete gateway.auth.trustedProxy;
   }
   gatewayRemote.token = stableGatewayToken;
   gatewayControlUi.basePath =
