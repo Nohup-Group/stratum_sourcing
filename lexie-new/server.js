@@ -477,10 +477,14 @@ function wait(ms) {
 }
 
 function createGatewayEnv() {
-  const gatewayEnv = { ...process.env };
-  if (OPENCLAW_GATEWAY_REMOTE_TOKEN) {
-    gatewayEnv.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_REMOTE_TOKEN;
-  }
+  // OpenClaw 2026.4.x rejects startup when gateway.auth.mode=trusted-proxy
+  // and any shared gateway token is also configured (via gateway.auth.token
+  // OR via the OPENCLAW_GATEWAY_TOKEN env var). Lexie runs in trusted-proxy
+  // mode, so strip OPENCLAW_GATEWAY_TOKEN from the gateway child env even if
+  // the wrapper process itself inherited it. The remote/client token stays
+  // available as OPENCLAW_GATEWAY_REMOTE_TOKEN for remote gateway clients.
+  const { OPENCLAW_GATEWAY_TOKEN: _gatewayAuthTokenStripped, ...gatewayEnv } =
+    process.env;
   return {
     ...gatewayEnv,
     HOME: OPENCLAW_HOME,
