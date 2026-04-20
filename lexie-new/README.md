@@ -5,7 +5,7 @@ Standalone OpenClaw Railway service for the Lexie migration. This service is sep
 ## Service shape
 
 - Base image: `node:22-bookworm`
-- OpenClaw pinned to `2026.3.28`
+- OpenClaw pinned to `2026.4.15`
 - `gog` pinned to `v0.12.0`
 - Public wrapper port: `PORT` (Railway)
 - Internal loopback gateway port: `INTERNAL_GATEWAY_PORT` (defaults to `18789`)
@@ -64,7 +64,7 @@ The backend still accepts legacy `OPENCLAW_GATEWAY_TOKEN` as a fallback input fo
 Bring the new service up once with the empty volume and confirm:
 
 - `/healthz` becomes healthy
-- `openclaw --version` reports `2026.3.28`
+- `openclaw --version` reports `2026.4.15`
 - `gog version` reports `v0.12.0`
 - the wrapper restarts OpenClaw if the child exits
 
@@ -108,20 +108,26 @@ Bootstrap state is tracked in `/data/.lexie-bootstrap-state.json` so future migr
 
 ## Model defaults
 
-- Preferred default model: `openai-codex/gpt-5.4` when an `openai-codex:*` auth profile exists in the live config
-- Fallback default model: `openai-direct/gpt-5.4` when Codex auth is absent but `OPENAI_API_KEY` is available
+- Preferred default model: `openai-codex/gpt-5.4` when an `openai-codex:*` auth profile exists in live agent state
+- Codex stays the only default path when that auth profile is present; direct OpenAI is only used if Codex auth is absent and `OPENAI_API_KEY` is available
 - Default thinking level: `high`
 - Memory embeddings stay on OpenAI with `text-embedding-3-small`
 
-## OpenClaw 2026.3.28 notes
+## OpenClaw 2026.4.15 notes
 
-- Official npm `latest` tag as of March 30, 2026 is `2026.3.28`.
-- Relevant upgrade note: newer OpenClaw builds harden local-direct `trusted-proxy` fallback behavior. Lexie already writes an explicit gateway token into config and now also passes that token into the child gateway env so browser and relay helpers can resolve it reliably.
-- Relevant upgrade note: config and doctor no longer auto-migrate very old configs. Lexie keeps patching the live `/data/.openclaw/openclaw.json` in place on every boot, so the service should stay on a current config shape instead of relying on old auto-migrations.
+- Official npm `latest` tag as of April 16, 2026 is `2026.4.15`.
+- Built-in auth monitoring lands in this release: `openclaw models status --check` (exit `0` ok, `1` expired/missing, `2` expiring soon) and a new `models.authStatus` gateway method. The Control UI Overview now shows a Model Auth status card with callouts for expiring/expired OAuth tokens.
+- Codex-acp subprocess teardown is now graceful on EPIPE, so the gateway no longer crashes when the codex app-server child exits abruptly.
+- Stale `openai-codex` native transport metadata self-heals on runtime and discovery instead of routing through the broken Cloudflare HTML path.
+- The `openai-codex` refresh path now falls back to the cached access token when refresh fails on accountId extraction, so transient refresh hiccups do not immediately take the agent offline.
+- WhatsApp/Baileys reconnect drains the pending per-auth `creds.json` save queue before reopening sockets, reducing the likelihood of a stray 401 on reconnect restoring from backup.
+- `openclaw security audit` gates `config.patch` / `config.apply` calls from the model-facing gateway tool when they would newly enable flags like `dangerouslyDisableDeviceAuth`. Lexie sets that flag at bootstrap time before the gateway starts (not via the tool), so the flag continues to apply, but any model-tool-driven re-enable is blocked.
+- Previous upgrade notes still apply: newer OpenClaw builds harden local-direct `trusted-proxy` fallback behavior (Lexie already writes an explicit gateway token into config and passes it into the child gateway env), and config/doctor no longer auto-migrate very old configs (Lexie keeps patching the live `/data/.openclaw/openclaw.json` in place on every boot).
 - Not expected to affect Lexie:
   - `qwen-portal-auth` removal
   - QMD-specific memory changes, because Lexie uses OpenAI embeddings instead of QMD
   - `/fast` behavior changes, because Lexie does not force fast mode
+  - Default Anthropic selection bump to Claude Opus 4.7 (Lexie uses `openai-codex/gpt-5.4` as primary)
 
 ## Cutover
 

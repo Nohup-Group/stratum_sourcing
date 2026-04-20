@@ -182,10 +182,13 @@ async function writeBootstrapState(state) {
   await writeJsonAtomic(BOOTSTRAP_STATE_PATH, state);
 }
 
-function hasCodexProfile(config) {
-  const auth = config && typeof config === "object" ? config.auth : null;
-  const profiles = auth && typeof auth === "object" ? auth.profiles : null;
-  if (!profiles || typeof profiles !== "object") {
+function getMainAuthProfilesPath() {
+  const stateRoot = process.env.OPENCLAW_STATE_DIR || STATE_ROOT;
+  return path.join(stateRoot, "agents", "main", "agent", "auth-profiles.json");
+}
+
+function profilesContainCodex(profiles) {
+  if (!profiles || typeof profiles !== "object" || Array.isArray(profiles)) {
     return false;
   }
 
@@ -200,16 +203,34 @@ function hasCodexProfile(config) {
   });
 }
 
-function resolveDefaultModelConfig(config) {
+async function hasCodexProfile(config) {
+  const auth = config && typeof config === "object" ? config.auth : null;
+  const profiles = auth && typeof auth === "object" ? auth.profiles : null;
+  if (profilesContainCodex(profiles)) {
+    return true;
+  }
+
+  const authProfiles = await readJsonSafe(getMainAuthProfilesPath(), null);
+  if (!authProfiles || typeof authProfiles !== "object") {
+    return false;
+  }
+
+  return (
+    profilesContainCodex(authProfiles.profiles) ||
+    profilesContainCodex(authProfiles)
+  );
+}
+
+async function resolveDefaultModelConfig(config) {
   const openAiKeyConfigured = Boolean(
     typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim(),
   );
-  const codexConfigured = hasCodexProfile(config);
+  const codexConfigured = await hasCodexProfile(config);
 
   if (codexConfigured) {
     return {
       primary: "openai-codex/gpt-5.4",
-      fallbacks: openAiKeyConfigured ? ["openai-direct/gpt-5.4"] : [],
+      fallbacks: [],
     };
   }
 
@@ -364,7 +385,7 @@ async function patchOpenClawConfig() {
     agentDir: path.join(STATE_ROOT, "agents", "investor", "agent"),
   });
 
-  // --- Models: prefer Codex OAuth when configured, otherwise fall back to OPENAI_API_KEY ---
+  // --- Models: prefer Codex OAuth from live agent state; only use direct if Codex auth is absent ---
   const models = ensureObject(config, "models");
   const providers = ensureObject(models, "providers");
   const openaiDirect = ensureObject(providers, "openai-direct");
@@ -385,7 +406,7 @@ async function patchOpenClawConfig() {
   ];
 
   const defaultModel = ensureObject(defaults, "model");
-  const resolvedModelConfig = resolveDefaultModelConfig(config);
+  const resolvedModelConfig = await resolveDefaultModelConfig(config);
   if (resolvedModelConfig) {
     defaultModel.primary = resolvedModelConfig.primary;
     defaultModel.fallbacks = resolvedModelConfig.fallbacks;
