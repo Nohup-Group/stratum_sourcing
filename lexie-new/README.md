@@ -106,6 +106,28 @@ The container only seeds missing mutable docs and knowledge files. It does not o
 
 Bootstrap state is tracked in `/data/.lexie-bootstrap-state.json` so future migrations can run once without clobbering reviewed docs.
 
+## Codex OAuth auto-refresh
+
+A small Node script (`scripts/refresh-codex-if-needed.js`) is scheduled by the wrapper to keep the `openai-codex:default` OAuth profile fresh without a human in the loop.
+
+Schedule:
+
+- Runs once 60 s after wrapper startup (defensive catch for containers that came up with a near-expiry token).
+- Runs again daily at 03:00 UTC (low-traffic slot) via an in-process `setTimeout` + `setInterval` chain in `server.js`.
+
+Behaviour:
+
+- Reads `/data/.openclaw/agents/main/agent/auth-profiles.json`.
+- If the profile's `expires` is more than `CODEX_AUTO_REFRESH_THRESHOLD_HOURS` in the future (default `48`), it logs healthy and exits.
+- If the profile is inside the threshold, it POSTs to `OAUTH_MINTER_URL` (default `https://oauthminter-production.up.railway.app/mint`) with `Authorization: Bearer $OAUTH_MINTER_API_KEY`, writes a timestamped backup of `auth-profiles.json`, atomically overwrites the file with the newly minted access/refresh/expires, and kills the running OpenClaw gateway child so the wrapper respawns it and re-reads the file (OpenClaw otherwise caches the old refresh token in memory and would hit `refresh_token_reused`).
+
+Env vars:
+
+- `OAUTH_MINTER_API_KEY` (required to enable) — bearer token for the oauth minter service.
+- `OAUTH_MINTER_URL` (optional) — override the mint endpoint.
+- `CODEX_AUTO_REFRESH_THRESHOLD_HOURS` (optional, default `48`) — refresh when the token has this many hours or fewer remaining.
+- `CODEX_AUTO_REFRESH_DRY_RUN=1` (optional) — log the decision but do not call the minter or touch the file.
+
 ## Model defaults
 
 - Preferred default model: `openai-codex/gpt-5.4` when an `openai-codex:*` auth profile exists in live agent state

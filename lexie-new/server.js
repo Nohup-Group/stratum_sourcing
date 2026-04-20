@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const net = require("net");
+const path = require("path");
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
 const { createPgPoolConfig } = require("./pg-config");
@@ -1654,7 +1655,66 @@ server.listen(PORT, LISTEN_HOST, () => {
   startGateway().catch((error) => {
     logError(`gateway start failed: ${error.stack || error.message}`);
   });
+  scheduleCodexAutoRefresh();
 });
+
+function runCodexAutoRefresh(trigger) {
+  const scriptPath = path.join(__dirname, "scripts", "refresh-codex-if-needed.js");
+  const child = spawn("node", [scriptPath], {
+    env: process.env,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  child.on("error", (error) => {
+    logError(
+      `codex-auto-refresh spawn failed trigger=${trigger}: ${error.stack || error.message}`,
+    );
+  });
+  child.on("exit", (code, signal) => {
+    log(
+      `codex-auto-refresh finished trigger=${trigger} code=${code} signal=${signal || "none"}`,
+    );
+  });
+}
+
+function scheduleCodexAutoRefresh() {
+  if (!process.env.OAUTH_MINTER_API_KEY) {
+    log(
+      "codex-auto-refresh disabled (OAUTH_MINTER_API_KEY not set); the script will still run but exit as a no-op",
+    );
+  }
+
+  // Run once shortly after startup so a container that came up with an
+  // already-near-expiry token recovers without waiting for the nightly slot.
+  setTimeout(() => runCodexAutoRefresh("startup"), 60_000);
+
+  // Daily at 03:00 UTC. Compute ms until the next occurrence, fire once, then
+  // repeat every 24h via setInterval.
+  const now = new Date();
+  const nextRun = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      3,
+      0,
+      0,
+      0,
+    ),
+  );
+  if (nextRun.getTime() <= now.getTime()) {
+    nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+  }
+  const msUntilFirstRun = nextRun.getTime() - now.getTime();
+
+  log(
+    `codex-auto-refresh scheduled first=${nextRun.toISOString()} inMinutes=${Math.round(msUntilFirstRun / 60000)} cadence=24h threshold=${process.env.CODEX_AUTO_REFRESH_THRESHOLD_HOURS || "48"}h`,
+  );
+
+  setTimeout(() => {
+    runCodexAutoRefresh("cron");
+    setInterval(() => runCodexAutoRefresh("cron"), 24 * 60 * 60 * 1000);
+  }, msUntilFirstRun);
+}
 
 async function shutdown(signal) {
   if (shutdownPromise) {
