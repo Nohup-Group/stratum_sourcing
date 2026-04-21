@@ -333,6 +333,10 @@ async function patchOpenClawConfig() {
   const agents = ensureObject(config, "agents");
   const defaults = ensureObject(agents, "defaults");
   const gateway = ensureObject(config, "gateway");
+  // OpenClaw 2026.4.15+ validates gateway.mode at startup and refuses to boot
+  // without it. We always run the local gateway process managed by this
+  // wrapper, so hardcode "local".
+  gateway.mode = "local";
   const gatewayAuth = ensureObject(gateway, "auth");
   const gatewayTrustedProxy = ensureObject(gatewayAuth, "trustedProxy");
   const gatewayControlUi = ensureObject(gateway, "controlUi");
