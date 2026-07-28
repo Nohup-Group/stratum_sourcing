@@ -86,6 +86,9 @@ async def seed():
 asyncio.run(seed())
 " || echo "Warning: Source seeding failed, continuing..."
 
+echo "--- Seeding signal library (idempotent) ---"
+python -m scripts.seed_signals || echo "Warning: Signal seeding failed, continuing..."
+
 FASTAPI_PORT="${PORT:-8081}"
 echo "--- Starting FastAPI sidecar (port $FASTAPI_PORT) ---"
 uvicorn app.main:app --host 0.0.0.0 --port "$FASTAPI_PORT" --log-level info &

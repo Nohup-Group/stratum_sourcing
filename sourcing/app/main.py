@@ -3,6 +3,7 @@
 import structlog
 from fastapi import FastAPI, Request
 
+from app.api.console import router as console_router
 from app.api.routes import router
 
 logger = structlog.get_logger()
@@ -15,6 +16,7 @@ def create_app() -> FastAPI:
         description="Daily monitoring tool for Stratum 3Ventures sourcing pipeline",
     )
     application.include_router(router)
+    application.include_router(console_router)
 
     # Mount Slack Bolt app for events + slash commands
     from app.integrations.slack_bot import get_slack_app

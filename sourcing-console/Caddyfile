@@ -1,0 +1,15 @@
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:80} {
+	handle /api/* {
+		reverse_proxy {$SOURCING_API_URL}
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

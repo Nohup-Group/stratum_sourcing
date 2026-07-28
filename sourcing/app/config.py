@@ -84,6 +84,18 @@ class Settings(BaseSettings):
     score_weight_recency: float = Field(default=0.15)
     score_weight_authority: float = Field(default=0.15)
 
+    # --- Signal engine ---
+    console_password: str = Field(default="", alias="CONSOLE_PASSWORD")
+    signal_scan_cooldown_days: int = Field(default=30, alias="SIGNAL_SCAN_COOLDOWN_DAYS")
+    signal_scan_auto_enabled: bool = Field(default=True, alias="SIGNAL_SCAN_AUTO_ENABLED")
+    signal_scan_auto_threshold: float = Field(
+        default=0.60, alias="SIGNAL_SCAN_AUTO_THRESHOLD"
+    )
+    signal_scan_auto_daily_limit: int = Field(
+        default=10, alias="SIGNAL_SCAN_AUTO_DAILY_LIMIT"
+    )
+    signal_scan_batch_size: int = Field(default=25, alias="SIGNAL_SCAN_BATCH_SIZE")
+
     # --- Scheduler / auto-growth ---
     auto_growth_daily_limit: int = Field(default=5, alias="AUTO_GROWTH_DAILY_LIMIT")
     auto_growth_per_parent_limit: int = Field(default=2, alias="AUTO_GROWTH_PER_PARENT_LIMIT")

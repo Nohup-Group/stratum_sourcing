@@ -360,6 +360,7 @@ class Entity(Base):
     watch_targets: Mapped[list["WatchTarget"]] = relationship(back_populates="entity")
     agent_jobs: Mapped[list["AgentJob"]] = relationship(back_populates="entity")
     outbox_events: Mapped[list["EventOutbox"]] = relationship(back_populates="entity")
+    signal_scans: Mapped[list["SignalScan"]] = relationship(back_populates="entity")
 
     __table_args__ = (
         UniqueConstraint("entity_type", "normalized_name", name="uq_entities_type_normalized"),
@@ -485,6 +486,126 @@ class EntityScore(Base):
 
     __table_args__ = (
         UniqueConstraint("entity_id", name="uq_entity_scores_entity_id"),
+    )
+
+
+SIGNAL_STRENGTHS = ("high", "medium")
+
+SIGNAL_RESULTS = (
+    "confirmed",  # Y — evidence meets the positive threshold
+    "absent",  # N — searched and confirmed not present
+    "unknown",  # ? — could not confirm or deny; earns half credit
+)
+
+SCAN_BANDS = (
+    "strong",  # >= 70% — progress to deep-dive due diligence
+    "moderate",  # 50-69% — worth a first call
+    "weak",  # 35-49% — monitor, re-scan on new milestone
+    "insufficient",  # < 35% — pass for now
+)
+
+
+class Signal(Base):
+    """One row of the Stratum3 observable-signal library."""
+
+    __tablename__ = "signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    subcategory: Mapped[str | None] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    indicator: Mapped[str | None] = mapped_column(Text)
+    data_source: Mapped[str | None] = mapped_column(Text)
+    search_method: Mapped[str | None] = mapped_column(Text)
+    strength: Mapped[str] = mapped_column(String(10), nullable=False, server_default="high")
+    threshold: Mapped[str | None] = mapped_column(Text)
+    anti_signal: Mapped[str | None] = mapped_column(Text)
+    points: Mapped[float] = mapped_column(Float, nullable=False, server_default="2.0")
+    scan_tier: Mapped[int] = mapped_column(Integer, nullable=False, server_default="2")
+    is_veto: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()", onupdate=datetime.utcnow
+    )
+
+    results: Mapped[list["SignalResult"]] = relationship(back_populates="signal")
+
+    __table_args__ = (
+        Index("idx_signals_category", "category"),
+        Index("idx_signals_scan_tier", "scan_tier"),
+    )
+
+
+class SignalScan(Base):
+    """One scoring pass of a company against the signal library."""
+
+    __tablename__ = "signal_scans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id"), nullable=False)
+    agent_job_id: Mapped[int | None] = mapped_column(ForeignKey("agent_jobs.id"))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    scan_depth: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default="standard"
+    )
+    trigger: Mapped[str] = mapped_column(String(30), nullable=False, server_default="manual")
+    points_earned: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    points_possible: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    score_pct: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    band: Mapped[str | None] = mapped_column(String(20))
+    veto_flags: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    category_scores: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    signals_confirmed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    signals_absent: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    signals_unknown: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rationale: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()"
+    )
+
+    entity: Mapped["Entity"] = relationship(back_populates="signal_scans")
+    results: Mapped[list["SignalResult"]] = relationship(
+        back_populates="scan", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("idx_signal_scans_entity_created", "entity_id", "created_at"),
+        Index("idx_signal_scans_status", "status"),
+    )
+
+
+class SignalResult(Base):
+    """Per-signal verdict inside one scan: Y/N/? plus evidence."""
+
+    __tablename__ = "signal_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scan_id: Mapped[int] = mapped_column(
+        ForeignKey("signal_scans.id", ondelete="CASCADE"), nullable=False
+    )
+    signal_id: Mapped[int] = mapped_column(ForeignKey("signals.id"), nullable=False)
+    result: Mapped[str] = mapped_column(String(12), nullable=False, server_default="unknown")
+    evidence_url: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    points_earned: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()"
+    )
+
+    scan: Mapped["SignalScan"] = relationship(back_populates="results")
+    signal: Mapped["Signal"] = relationship(back_populates="results")
+
+    __table_args__ = (
+        UniqueConstraint("scan_id", "signal_id", name="uq_signal_results_scan_signal"),
+        Index("idx_signal_results_scan", "scan_id"),
+        Index("idx_signal_results_signal", "signal_id"),
     )
 
 

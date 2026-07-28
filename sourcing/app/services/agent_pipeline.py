@@ -647,6 +647,16 @@ async def process_entity_scorer_job(db: AsyncSession, job: AgentJob) -> dict:
         entity_id=entity.id,
     )
 
+    # Promising companies graduate to a full signal scan (capped per day)
+    if (
+        entity.entity_type == "company"
+        and settings.signal_scan_auto_enabled
+        and score.score >= settings.signal_scan_auto_threshold
+    ):
+        from app.services.signal_engine import enqueue_signal_scan
+
+        await enqueue_signal_scan(db, entity_id=entity.id, trigger="auto")
+
     await db.flush()
     return {"entity_id": entity.id, "score": score.score}
 
@@ -684,6 +694,10 @@ async def process_agent_job(db: AsyncSession, job: AgentJob) -> dict:
         return await process_source_expander_job(db, job)
     if job.job_type == "source_onboarder":
         return await process_source_onboarder_job(db, job)
+    if job.job_type == "signal_scan":
+        from app.services.signal_engine import process_signal_scan_job
+
+        return await process_signal_scan_job(db, job)
     raise ValueError(f"Unsupported job_type={job.job_type}")
 
 
