@@ -73,9 +73,12 @@ async function runOpsPrompt({
             minProtocol: GATEWAY_PROTOCOL_VERSION,
             maxProtocol: GATEWAY_PROTOCOL_VERSION,
             client: {
-              id: "lexie-ops",
-              version: "1.0",
+              // OpenClaw 2026.4+ validates id/mode against a fixed schema; use
+              // the same identity as the webchat client, which it accepts.
+              id: "openclaw-control-ui",
+              version: "lexie-ops",
               platform: "node",
+              mode: "webchat",
             },
             role: "operator",
             scopes: ["operator.admin", "operator.read", "operator.write"],
