@@ -270,9 +270,15 @@ async def provenance(db: AsyncSession = Depends(get_session)):
         .distinct(SignalScan.entity_id)
         .subquery()
     )
+    # Count only scans on companies that passed the gate. Two scans predate the
+    # gate entirely (the old pipeline scanned Securitize, which is NYSE-listed),
+    # and counting them would make the funnel widen at the bottom.
     bands = dict(
         (await db.execute(
-            select(latest_scan_sq.c.band, func.count()).group_by(latest_scan_sq.c.band)
+            select(latest_scan_sq.c.band, func.count())
+            .join(Entity, Entity.id == latest_scan_sq.c.entity_id)
+            .where(Entity.is_eligible.is_(True))
+            .group_by(latest_scan_sq.c.band)
         )).all()
     )
     scanned = sum(bands.values())
@@ -283,7 +289,11 @@ async def provenance(db: AsyncSession = Depends(get_session)):
             select(
                 func.width_bucket(latest_scan_sq.c.score_pct, 0, 1, 10).label("b"),
                 func.count(),
-            ).group_by("b").order_by("b")
+            )
+            .join(Entity, Entity.id == latest_scan_sq.c.entity_id)
+            .where(Entity.is_eligible.is_(True))
+            .group_by("b")
+            .order_by("b")
         )).all()
     )
 
