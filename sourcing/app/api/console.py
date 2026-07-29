@@ -231,6 +231,124 @@ async def overview(db: AsyncSession = Depends(get_session)):
     }
 
 
+# --- Provenance & funnel (the "how the system works" view) ---
+
+
+@router.get("/provenance", dependencies=[protected])
+async def provenance(db: AsyncSession = Depends(get_session)):
+    """Where companies come from, and what survives each stage of the screen.
+
+    This is the narrative view: every proper noun the extractor met, narrowed
+    by type, then by the thesis gate, then by signal scan, down to the handful
+    worth a meeting.
+    """
+    entity_types = dict(
+        (await db.execute(select(Entity.entity_type, func.count()).group_by(Entity.entity_type))).all()
+    )
+
+    companies = entity_types.get("company", 0)
+    eligible = (
+        await db.execute(
+            select(func.count(Entity.id)).where(
+                Entity.entity_type == "company", Entity.is_eligible.is_(True)
+            )
+        )
+    ).scalar_one()
+    rejected = (
+        await db.execute(
+            select(func.count(Entity.id)).where(
+                Entity.entity_type == "company", Entity.is_eligible.is_(False)
+            )
+        )
+    ).scalar_one()
+    unassessed = companies - eligible - rejected
+
+    latest_scan_sq = (
+        select(SignalScan.entity_id, SignalScan.band, SignalScan.score_pct, SignalScan.coverage)
+        .where(SignalScan.status == "completed")
+        .order_by(SignalScan.entity_id, SignalScan.created_at.desc())
+        .distinct(SignalScan.entity_id)
+        .subquery()
+    )
+    bands = dict(
+        (await db.execute(
+            select(latest_scan_sq.c.band, func.count()).group_by(latest_scan_sq.c.band)
+        )).all()
+    )
+    scanned = sum(bands.values())
+
+    # Score histogram in ten-point buckets, over latest completed scans.
+    buckets = dict(
+        (await db.execute(
+            select(
+                func.width_bucket(latest_scan_sq.c.score_pct, 0, 1, 10).label("b"),
+                func.count(),
+            ).group_by("b").order_by("b")
+        )).all()
+    )
+
+    # Provenance: which source surfaced each imported company, from metadata.
+    src_name = Entity.metadata_["stratum3"]["found_via"]["source_name"].astext
+    src_category = Entity.metadata_["stratum3"]["found_via"]["source_category"].astext
+    prov_rows = (
+        await db.execute(
+            select(src_name, src_category, func.count())
+            .where(
+                Entity.entity_type == "company",
+                Entity.metadata_["stratum3"].isnot(None),
+            )
+            .group_by(src_name, src_category)
+            .order_by(func.count().desc())
+        )
+    ).all()
+
+    by_source_category: dict[str, int] = {}
+    for _name, category, count in prov_rows:
+        key = category or "unknown"
+        by_source_category[key] = by_source_category.get(key, 0) + count
+
+    sources_registered = dict(
+        (await db.execute(
+            select(Source.category, func.count())
+            .where(Source.is_active.is_(True))
+            .group_by(Source.category)
+        )).all()
+    )
+
+    return {
+        "funnel": [
+            {"stage": "Entities extracted", "count": sum(entity_types.values()),
+             "note": "every named thing seen in a monitored source"},
+            {"stage": "Typed as companies", "count": companies,
+             "note": "after removing regulators, investors, media, tokens, laws, places"},
+            {"stage": "Pass the thesis gate", "count": eligible,
+             "note": "European, founded 2014+, Seed/Series A, <€30m, institutional, infrastructure"},
+            {"stage": "Signal-scanned", "count": scanned,
+             "note": "scored against the 200-signal library"},
+            {"stage": "Strong or moderate", "count": bands.get("strong", 0) + bands.get("moderate", 0),
+             "note": "enough confirmed evidence to warrant a conversation"},
+        ],
+        "entity_types": entity_types,
+        "eligibility": {
+            "eligible": eligible,
+            "rejected": rejected,
+            "not_yet_assessed": unassessed,
+        },
+        "bands": bands,
+        "score_histogram": [
+            {"bucket": f"{(b - 1) * 10}-{b * 10}%", "count": c}
+            for b, c in sorted(buckets.items())
+            if b is not None
+        ],
+        "top_sources": [
+            {"name": name or "unknown", "category": category or "unknown", "companies": count}
+            for name, category, count in prov_rows[:25]
+        ],
+        "companies_by_source_category": by_source_category,
+        "sources_registered": sources_registered,
+    }
+
+
 # --- Companies ---
 
 

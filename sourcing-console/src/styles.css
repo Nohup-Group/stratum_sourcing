@@ -301,3 +301,96 @@ tr.rowlink:hover td { background: var(--panel-2); }
   .brand-sub { display: none; }
   .main { padding: 20px 16px 48px; }
 }
+
+/* ---------- sourcing map: funnel ---------- */
+.funnel { display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
+.funnel-row { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.funnel-meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.funnel-stage { font-weight: 600; font-size: 13.5px; }
+.funnel-note { color: var(--faint); font-size: 12px; }
+.funnel-bar-wrap { display: flex; align-items: center; gap: 10px; }
+.funnel-bar {
+  height: 26px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, transparent));
+  min-width: 3px;
+  transition: width .5s ease;
+}
+.funnel-bar[data-final="true"] { background: var(--good); }
+.funnel-count { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+.funnel-drop { font-size: 11.5px; color: var(--faint); min-height: 14px; }
+
+/* ---------- split bar + legend ---------- */
+.split-bar {
+  display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+  background: var(--panel-2); margin: 10px 0 12px;
+}
+.split-seg { display: block; min-width: 1px; }
+.legend {
+  list-style: none; padding: 0; margin: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 14px;
+  font-size: 12.5px; color: var(--muted);
+}
+.legend li { display: flex; align-items: center; gap: 6px; }
+.legend b { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+.seg-company { background: var(--accent); }
+.seg-person { background: #7a8ff5; }
+.seg-investor { background: #b07cf0; }
+.seg-regulator { background: #e0857a; }
+.seg-media { background: #e8b45c; }
+.seg-event { background: #6cc2a8; }
+.seg-association { background: #59a9c9; }
+.seg-academic { background: #9c8fb8; }
+.seg-protocol { background: #7fbf8e; }
+.seg-token { background: #d9a3c9; }
+.seg-standard { background: #8f9bb3; }
+.seg-product { background: #c9b98a; }
+.seg-place { background: #a8b8c8; }
+.seg-concept { background: #c2c2cc; }
+
+/* ---------- histogram ---------- */
+.hist {
+  display: flex; align-items: flex-end; gap: 4px;
+  height: 120px; margin: 12px 0 8px; padding-bottom: 16px; position: relative;
+}
+.hist-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative; }
+.hist-bar {
+  background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px;
+  transition: height .4s ease;
+}
+.hist-x {
+  position: absolute; bottom: -16px; left: 0; right: 0;
+  text-align: center; font-size: 10px; color: var(--faint);
+}
+.band-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.band-chips .pill b { margin-left: 4px; }
+.pill.subtle { background: var(--panel-2); color: var(--muted); }
+.pill.poor, .pill\[insufficient-evidence\] { background: var(--panel-2); color: var(--muted); }
+
+/* ---------- radar ---------- */
+.radar { display: block; margin: 0 auto; }
+.radar-ring { fill: none; stroke: var(--hairline); stroke-width: 1; }
+.radar-ring-outer { stroke: color-mix(in srgb, var(--hairline) 160%, var(--muted)); }
+.radar-spoke { stroke: var(--hairline); stroke-width: 1; }
+.radar-area {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+  stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round;
+}
+.radar-dot { fill: var(--accent); }
+.radar-label { font-size: 10.5px; fill: var(--muted); font-family: var(--sans); }
+
+/* ---------- shared layout helpers ---------- */
+.grid-2 {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px; margin-top: 16px;
+}
+.panel {
+  background: var(--panel); border: 1px solid var(--hairline);
+  border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow);
+}
+.panel + .panel { margin-top: 16px; }
+.panel-title { font-size: 14px; font-weight: 650; margin: 0 0 2px; }
+.panel-sub { color: var(--faint); font-size: 12.5px; margin: 0 0 12px; }
+.table.compact td, .table.compact th { padding: 6px 8px; font-size: 12.5px; }

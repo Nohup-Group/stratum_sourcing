@@ -8,6 +8,7 @@ import PicksPage from "./pages/PicksPage";
 import PipelinePage from "./pages/PipelinePage";
 import SignalsPage from "./pages/SignalsPage";
 import SourcesPage from "./pages/SourcesPage";
+import SourcingMapPage from "./pages/SourcingMapPage";
 
 function RequireKey({ children }: { children: JSX.Element }) {
   const location = useLocation();
@@ -29,6 +30,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<PipelinePage />} />
+        <Route path="/map" element={<SourcingMapPage />} />
         <Route path="/picks" element={<PicksPage />} />
         <Route path="/companies" element={<CompaniesPage />} />
         <Route path="/companies/:id" element={<CompanyPage />} />

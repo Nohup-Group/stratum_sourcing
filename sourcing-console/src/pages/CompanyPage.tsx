@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 import { CompanyDetail, SignalResultRow } from "../types";
+import Radar, { RadarAxis } from "../components/Radar";
 import {
   BandPill,
   CategoryBars,
@@ -41,6 +42,29 @@ export default function CompanyPage() {
   if (!company) return <div className="loading">Loading company…</div>;
 
   const scan = company.latest_scan;
+
+  // Fixed axis order so two companies can be compared by shape, and so a
+  // category with nothing resolved reads as a gap rather than a zero.
+  const RADAR_ORDER = [
+    "Founder & Team",
+    "Regulatory & Compliance",
+    "Commercial Traction",
+    "Technology & Product",
+    "Investor & Funding",
+    "Market Presence",
+    "Structural & Strategic",
+  ];
+  const radarAxes: RadarAxis[] = RADAR_ORDER.map((label) => {
+    const raw = scan?.category_scores?.[label] as
+      | { pct?: number; fit?: number | null; resolved?: number; confirmed?: number; absent?: number }
+      | undefined;
+    const value = raw == null ? null : raw.fit ?? raw.pct ?? null;
+    const detail =
+      raw?.confirmed != null && raw?.absent != null
+        ? `${raw.confirmed} confirmed / ${raw.confirmed + raw.absent} resolved`
+        : undefined;
+    return { label, value: value ?? null, detail };
+  });
 
   async function queueScan(depth: "standard" | "full") {
     setQueueing(true);
@@ -144,7 +168,10 @@ export default function CompanyPage() {
         <div className="card">
           <div className="section-title">Category breakdown</div>
           {scan ? (
-            <CategoryBars scores={scan.category_scores} />
+            <>
+              <Radar axes={radarAxes} />
+              <CategoryBars scores={scan.category_scores} />
+            </>
           ) : company.heuristic ? (
             <>
               <div className="small muted" style={{ marginBottom: 8 }}>
