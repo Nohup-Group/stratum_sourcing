@@ -594,7 +594,7 @@ class SignalScan(Base):
     points_earned: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     points_possible: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     score_pct: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
-    band: Mapped[str | None] = mapped_column(String(20))
+    band: Mapped[str | None] = mapped_column(String(30))
     veto_flags: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     category_scores: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     signals_confirmed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

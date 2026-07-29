@@ -79,6 +79,14 @@ def upgrade() -> None:
         ["entity_type", "is_eligible"],
     )
 
+    # "insufficient-evidence" is 21 characters and the column was varchar(20).
+    op.alter_column(
+        "signal_scans",
+        "band",
+        existing_type=sa.String(length=20),
+        type_=sa.String(length=30),
+        existing_nullable=True,
+    )
     op.add_column(
         "signal_scans",
         sa.Column("signals_not_applicable", sa.Integer(), nullable=False, server_default="0"),
@@ -109,6 +117,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("signal_scans", "coverage")
     op.drop_column("signal_scans", "signals_not_applicable")
+    op.execute("UPDATE signal_scans SET band = NULL WHERE length(band) > 20")
+    op.alter_column(
+        "signal_scans",
+        "band",
+        existing_type=sa.String(length=30),
+        type_=sa.String(length=20),
+        existing_nullable=True,
+    )
     op.drop_index("idx_entities_eligible", table_name="entities")
     op.drop_index("idx_entities_domain", table_name="entities")
     op.drop_column("entities", "gate")
