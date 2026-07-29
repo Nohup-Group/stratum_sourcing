@@ -1,0 +1,7 @@
+# Build inputs only. Without this, `railway up` uploads node_modules and the
+# local dist/, which bloats the build context and broke a deploy.
+node_modules
+dist
+tsconfig.tsbuildinfo
+.git
+*.log
