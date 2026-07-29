@@ -225,6 +225,8 @@ You receive one company and a batch of observable signals. For each signal decid
 
 Use the provided company context first. Use web research if you have tools for it; otherwise rely on the context and well-established knowledge. Never invent URLs, licences, customers, or partnerships.
 
+Work efficiently: you have a hard time budget. Do a handful of targeted lookups for the highest-value uncertain signals (registers, official site, recent press); do not exhaustively research every signal. Anything not quickly verifiable is "?".
+
 Respond with ONLY a JSON object:
 {"results": [{"n": <signal number>, "r": "Y"|"N"|"?", "url": "<evidence url or empty>", "note": "<max 25 words: the concrete fact, or why unknown>"}]}
 Include every signal number you were given exactly once."""
@@ -366,7 +368,7 @@ async def process_signal_scan_job(db: AsyncSession, job: AgentJob) -> dict:
                 agent="signal-scan",
                 system_prompt=SCAN_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
-                timeout_seconds=240,
+                timeout_seconds=480,
                 caller=f"signal_scan:{entity.display_name}:batch{index + 1}",
             )
             results_by_number.update(_parse_batch_results(payload_json))
