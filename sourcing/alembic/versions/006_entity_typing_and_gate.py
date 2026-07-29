@@ -31,6 +31,7 @@ NEW_ENTITY_TYPES = (
     "regulator",
     "media",
     "event",
+    "association",
     "academic",
     "protocol",
     "token",
