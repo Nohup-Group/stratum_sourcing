@@ -300,7 +300,16 @@ Austria 5, Belgium 5, Lithuania 3, Ireland 3.
 | EU Trusted List (`ec.europa.eu/tools/lotl/eu-lotl.xml`) | monthly diff | Every eIDAS QTSP in the EU, machine-readable |
 | UK DIATF certified providers | weekly | Fastest-moving identity register in Europe |
 | EBAday Fintech Zone finalists + exhibitors | annual | Screened from 70+ applicants by transaction-banking judges |
-| ESMA DLT Pilot Regime authorisations | quarterly | Tiny list, enormous signal — this is how 21X and Axiology surfaced |
+| [ESMA Authorised DLT Market Infrastructures](https://www.esma.europa.eu/sites/default/files/2026-01/Authorised_DLT_Market_Infrastructures.pdf) | quarterly | Tiny list, enormous signal — every DLT Pilot Regime authorisation in the EU, in one PDF. This is how 21X and Axiology surfaced |
+
+**Spot-check of the top result, against official sources rather than company
+copy:** Axiology's claimed DLT Trading and Settlement System authorisation is
+real. `UAB Axiology DLT` (Vilnius) appears on the
+[Bank of Lithuania register of financial market participants](https://www.lb.lt/en/sfi-financial-market-participants//uab-axiology-dlt)
+with a DLT TSS permission under Regulation (EU) 2022/858 valid from
+**9 July 2025**, and on ESMA's authorised DLT market infrastructures list. Note
+the registry name differs from the trading name — another reason identity must
+key on domain and registry id, not display name.
 
 Two ingestion caveats learned the hard way: several directories still list
 companies that have died or been acquired, and two had moved domains — so any
