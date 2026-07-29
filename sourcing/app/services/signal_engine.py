@@ -18,7 +18,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -334,8 +334,7 @@ async def process_signal_scan_job(db: AsyncSession, job: AgentJob) -> dict:
         )
         db.add(scan)
     else:
-        for old in list(scan.results):
-            await db.delete(old)
+        await db.execute(delete(SignalResult).where(SignalResult.scan_id == scan.id))
     scan.status = "running"
     scan.started_at = utc_now()
     await db.flush()
