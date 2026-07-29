@@ -7,6 +7,24 @@ function createError(message) {
   return new Error(message);
 }
 
+// OpenClaw 2026.4+ chat events carry the full text in payload.message
+// (either .text or .content[] parts); older gateways used payload.payloads[].
+function extractTextFromMessage(message) {
+  if (!message) {
+    return "";
+  }
+  if (typeof message.text === "string") {
+    return message.text;
+  }
+  if (Array.isArray(message.content)) {
+    return message.content
+      .filter((part) => part && part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("");
+  }
+  return "";
+}
+
 async function runOpsPrompt({
   host,
   port,
@@ -29,6 +47,7 @@ async function runOpsPrompt({
   });
   const pending = new Map();
   const chatChunks = [];
+  let latestText = "";
   let timeoutHandle = null;
   let settled = false;
 
@@ -107,26 +126,35 @@ async function runOpsPrompt({
 
       if (frame.type === "event" && frame.event === "chat") {
         const payload = frame.payload || {};
+
+        // New shape: deltas/finals carry the full text-so-far in payload.message.
+        const messageText = extractTextFromMessage(payload.message);
+        if (messageText) {
+          latestText = messageText;
+        }
+        // Legacy shape: incremental chunks in payload.payloads[].
         const payloads = Array.isArray(payload.payloads) ? payload.payloads : [];
         for (const item of payloads) {
           if (item && item.text && !item.isError) {
             chatChunks.push(item.text);
           }
         }
+
         if (payload.state === "final") {
           if (!settled) {
             settled = true;
             cleanup();
-            resolve(chatChunks.join("").trim());
+            resolve((latestText || chatChunks.join("")).trim());
           }
           return;
         }
         if (payload.state === "error") {
-          const errorText = payloads
+          const legacyErrorText = payloads
             .filter((item) => item && item.isError && item.text)
             .map((item) => item.text)
             .join(" ")
             .trim();
+          const errorText = (payload.errorMessage || legacyErrorText || "").trim();
           if (!settled) {
             settled = true;
             cleanup();
