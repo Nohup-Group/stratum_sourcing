@@ -100,7 +100,7 @@ export default function PicksPage() {
                         <strong>{entity.display_name}</strong>
                       </Link>
                     </td>
-                    <td className="num">{(entity.heuristic_score ?? 0).toFixed(2)}</td>
+                    <td className="num">{(entity.triage_score ?? 0).toFixed(2)}</td>
                     <td className="num">{entity.finding_count}</td>
                     <td>{timeAgo(entity.last_seen_at)}</td>
                   </tr>

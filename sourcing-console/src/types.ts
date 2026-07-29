@@ -10,6 +10,10 @@ export interface ScanSummary {
   signals_confirmed: number;
   signals_absent: number;
   signals_unknown: number;
+  signals_not_applicable: number;
+  /** Share of assessed signals actually resolved. Below 0.4 the band is
+   *  "insufficient-evidence" — a thin scan is not a moderate company. */
+  coverage: number;
   veto_flags: { number: number; name: string; note: string }[];
   category_scores: Record<
     string,
@@ -30,7 +34,12 @@ export interface CompanySummary {
   last_seen_at: string;
   finding_count: number;
   source_count: number;
-  heuristic_score: number | null;
+  domain: string | null;
+  is_eligible: boolean | null;
+  lifecycle_status: string;
+  gate: Record<string, unknown>;
+  /** Salience in our sources, NOT thesis fit. Only a signal scan measures fit. */
+  triage_score: number | null;
   latest_scan: ScanSummary | null;
 }
 
@@ -48,7 +57,7 @@ export interface SignalResultRow {
   points_possible: number;
 }
 
-export interface CompanyDetail extends Omit<CompanySummary, "heuristic_score" | "latest_scan"> {
+export interface CompanyDetail extends Omit<CompanySummary, "triage_score" | "latest_scan"> {
   metadata: Record<string, unknown>;
   heuristic: { score: number; components: Record<string, number>; last_scored_at: string } | null;
   research_summary: string | null;
@@ -88,14 +97,14 @@ export interface Overview {
 
 export interface Pick {
   rank: number;
-  entity: Omit<CompanySummary, "heuristic_score" | "latest_scan">;
+  entity: Omit<CompanySummary, "triage_score" | "latest_scan">;
   scan: ScanSummary;
   highlights: { name: string; evidence_url: string | null }[];
 }
 
 export interface PicksResponse {
   picks: Pick[];
-  rising_unscanned: (Omit<CompanySummary, "latest_scan"> & { heuristic_score: number })[];
+  rising_unscanned: (Omit<CompanySummary, "latest_scan"> & { triage_score: number })[];
 }
 
 export interface SignalRow {
