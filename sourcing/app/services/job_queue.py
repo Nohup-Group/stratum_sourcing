@@ -133,17 +133,25 @@ async def claim_pending_events(db: AsyncSession, limit: int = 50) -> list[EventO
     return events
 
 
+STALE_LEASE_MINUTES = 45
+
+
 async def claim_pending_jobs(
     db: AsyncSession,
     *,
     limit: int = 25,
     lease_owner: str,
 ) -> list[AgentJob]:
+    stale_cutoff = utc_now() - timedelta(minutes=STALE_LEASE_MINUTES)
     stmt: Select[tuple[AgentJob]] = (
         select(AgentJob)
         .where(
-            AgentJob.status.in_(["pending", "retry"]),
-            AgentJob.available_at <= utc_now(),
+            (
+                AgentJob.status.in_(["pending", "retry"])
+                & (AgentJob.available_at <= utc_now())
+            )
+            # Reclaim jobs whose worker died mid-run (lease never released)
+            | ((AgentJob.status == "running") & (AgentJob.leased_at <= stale_cutoff))
         )
         .order_by(AgentJob.priority.asc(), AgentJob.created_at.asc())
         .limit(limit)

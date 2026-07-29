@@ -729,6 +729,9 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
                 logger.exception("agent_job_failed", job_id=job.id, job_type=job.job_type)
                 await mark_job_failed(db, job, error=str(error), retry=job.attempts < 4)
                 failed += 1
+            # Durable per job: slow jobs (signal scans do minutes of research)
+            # must not lose the whole cycle's work to one restart.
+            await db.commit()
 
         await db.commit()
         return {
