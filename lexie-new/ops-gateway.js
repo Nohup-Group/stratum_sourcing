@@ -22,7 +22,11 @@ async function runOpsPrompt({
     ? `[System]\n${systemPrompt}\n\n[User]\n${userPrompt}`
     : userPrompt;
 
-  const ws = new WebSocket(`ws://${host}:${port}`);
+  // Present the gateway host as Origin — OpenClaw's control-UI origin check
+  // only admits connections that look like they come from the gateway itself.
+  const ws = new WebSocket(`ws://${host}:${port}`, {
+    origin: `http://${host}:${port}`,
+  });
   const pending = new Map();
   const chatChunks = [];
   let timeoutHandle = null;
