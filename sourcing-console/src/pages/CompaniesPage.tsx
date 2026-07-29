@@ -93,8 +93,8 @@ export default function CompaniesPage() {
                       : "—"}
                   </td>
                   <td className="num">
-                    {company.heuristic_score != null
-                      ? company.heuristic_score.toFixed(2)
+                    {company.triage_score != null
+                      ? company.triage_score.toFixed(2)
                       : "—"}
                   </td>
                   <td className="num">{company.finding_count}</td>

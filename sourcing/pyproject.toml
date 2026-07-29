@@ -59,3 +59,12 @@ line-length = 100
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "unit: fast, isolated tests with no database or network",
+    "integration: tests that touch the database or external services",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

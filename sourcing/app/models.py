@@ -60,12 +60,34 @@ FINDING_CATEGORIES = (
     "opinion",
 )
 
+# The extractor names every proper noun it meets. Without a type for each of
+# these, regulators, VCs, media, tokens, laws and countries all land in the
+# company table and get scored as investment targets. Only "company" enters the
+# sourcing funnel; the rest are kept as graph context.
 ENTITY_TYPES = (
     "company",
     "person",
+    "investor",
+    "regulator",
+    "media",
+    "event",
+    "association",
+    "academic",
+    "protocol",
+    "token",
+    "standard",
+    "product",
+    "place",
+    "concept",
 )
 
-WATCH_TARGET_TYPES = ENTITY_TYPES
+# Watchlists only ever track companies and people, regardless of how many types
+# the extractor can emit.
+WATCH_TARGET_TYPES = ("company", "person")
+
+# Lifecycle of a company as an investable target. Companies get acquired and
+# dissolved and nothing else in the pipeline notices.
+LIFECYCLE_STATUSES = ("live", "acquired", "dissolved", "dormant", "unknown")
 
 
 class Source(Base):
@@ -326,6 +348,22 @@ class Entity(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
     canonical_url: Mapped[str | None] = mapped_column(Text)
+    # The company's OWN registrable domain, not the URL of an article about it.
+    # This is the real identity key — display names collide constantly
+    # (Outpost/Outpost24, Zapp across three firms, Cadastral the NY proptech).
+    domain: Mapped[str | None] = mapped_column(String(255))
+    registry_id: Mapped[str | None] = mapped_column(String(120))
+    lifecycle_status: Mapped[str] = mapped_column(
+        Enum(*LIFECYCLE_STATUSES, name="lifecycle_status"),
+        nullable=False,
+        server_default="unknown",
+    )
+    lifecycle_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Thesis eligibility, evaluated BEFORE scoring. None = not yet assessed.
+    # An ineligible company stays in the graph as context but is barred from
+    # picks and rankings — capability is not investability.
+    is_eligible: Mapped[bool | None] = mapped_column(Boolean)
+    gate: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     description: Mapped[str | None] = mapped_column(Text)
     thesis_tags: Mapped[list[str]] = mapped_column(
         ARRAY(String), default=list, server_default="{}"
@@ -556,12 +594,19 @@ class SignalScan(Base):
     points_earned: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     points_possible: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     score_pct: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
-    band: Mapped[str | None] = mapped_column(String(20))
+    band: Mapped[str | None] = mapped_column(String(30))
     veto_flags: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     category_scores: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     signals_confirmed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     signals_absent: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     signals_unknown: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    signals_not_applicable: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    # Share of assessed signals that were actually resolved (confirmed/absent).
+    # Reported next to score_pct and never folded into it: a company we know
+    # little about must not read as a middling company.
+    coverage: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     rationale: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -2,9 +2,13 @@
 
 Implements the framework from Stratum3_200_Observable_Signals.xlsx:
 - 200 observable signals in 7 categories, High (2 pts) / Medium (1 pt)
-- Per-company scans marking each signal confirmed / absent / unknown (Y/N/?),
-  unknown earns half credit
-- Score bands: >=70% strong, 50-69% moderate, 35-49% weak, <35% insufficient
+- Per-company scans marking each signal confirmed / absent / unknown / not
+  applicable (Y/N/?/NA). Only confirmed and absent score; unknown and
+  not-applicable are excluded from both numerator and denominator, so ignorance
+  never reads as partial merit and a signal that cannot apply to a company's
+  vertical is never counted against it
+- Score bands: >=70% strong, 50-69% moderate, 35-49% weak, <35% poor — but only
+  when coverage >= 40%; below that the scan reports "insufficient-evidence"
 - Veto signals (licensing / AML / adverse action): an absent verdict flags the
   scan for review regardless of total score — it does not zero the score
 - Standard scans cover tier-1 signals (~60 highest-leverage); full scans cover
@@ -43,6 +47,25 @@ def utc_now() -> datetime:
 
 STRENGTH_POINTS = {"high": 2.0, "medium": 1.0}
 
+# Category weights. Founder signals are the strongest predictor at Seed, so the
+# score is a weighted blend of per-category fit rather than a flat point sum —
+# otherwise Technology & Product (40 signals) outweighs Regulatory (30) purely
+# on library size.
+CATEGORY_WEIGHTS = {
+    "Founder & Team": 0.30,
+    "Regulatory & Compliance": 0.20,
+    "Commercial Traction": 0.20,
+    "Technology & Product": 0.12,
+    "Investor & Funding": 0.10,
+    "Market Presence": 0.04,
+    "Structural & Strategic": 0.04,
+}
+
+# A scan that resolved almost nothing is not a moderate company, it is an
+# unresearched one. Below this coverage the scan reports "insufficient-evidence"
+# instead of a band.
+MIN_COVERAGE_FOR_BAND = 0.40
+
 # Per-category tier-1 quotas (~60 signals for the standard scan). Within each
 # category the first N high-strength signals in library order are tier 1.
 TIER1_QUOTAS = {
@@ -67,11 +90,18 @@ BAND_THRESHOLDS = (
 )
 
 
-def band_for(score_pct: float) -> str:
+def band_for(score_pct: float, coverage: float) -> str:
+    """Band a scan, but only when enough of the library was actually resolved.
+
+    Coverage is reported alongside the score and never blended into it: a
+    company we know little about must not read as a middling company.
+    """
+    if coverage < MIN_COVERAGE_FOR_BAND:
+        return "insufficient-evidence"
     for threshold, band in BAND_THRESHOLDS:
         if score_pct >= threshold:
             return band
-    return "insufficient"
+    return "poor"
 
 
 # ---------------------------------------------------------------------------
@@ -138,41 +168,65 @@ async def seed_signals(db: AsyncSession, library: list[dict]) -> dict:
 # Scoring (pure — unit-testable without DB or LLM)
 # ---------------------------------------------------------------------------
 
-RESULT_CREDIT = {"confirmed": 1.0, "unknown": 0.5, "absent": 0.0}
+# Only these two verdicts carry scoring weight. "unknown" and "not_applicable"
+# are excluded from BOTH numerator and denominator — a signal we could not
+# resolve, or that cannot apply to this company's vertical, must never be scored
+# as half-present or as absent.
+RESULT_CREDIT = {"confirmed": 1.0, "absent": 0.0}
+UNSCORED_RESULTS = ("unknown", "not_applicable")
+VALID_RESULTS = tuple(RESULT_CREDIT) + UNSCORED_RESULTS
 
 
 def compute_scan_scoring(
     signals: list[Signal],
     results_by_number: dict[int, dict],
 ) -> dict:
-    """Roll per-signal verdicts up to points, category scores, band, and vetoes.
+    """Roll per-signal verdicts up to a weighted fit score, coverage, and vetoes.
 
     results_by_number: {signal.number: {"result": ..., "evidence_url": ..., "note": ...}}
-    Signals with no verdict are treated as unknown.
+    Signals with no verdict are treated as unknown, and therefore do not score.
+
+    fit_score is a weighted blend of per-category fit, where each category's fit
+    is earned/resolved within that category. Categories with nothing resolved
+    drop out of the blend rather than scoring zero.
     """
     per_signal: list[dict] = []
     categories: dict[str, dict] = {}
-    earned = possible = 0.0
-    counts = {"confirmed": 0, "absent": 0, "unknown": 0}
+    earned = resolved_points = assessed_points = 0.0
+    counts = {"confirmed": 0, "absent": 0, "unknown": 0, "not_applicable": 0}
     veto_flags: list[dict] = []
 
     for signal in signals:
         verdict = results_by_number.get(signal.number) or {}
         result = verdict.get("result") or "unknown"
-        if result not in RESULT_CREDIT:
+        if result not in VALID_RESULTS:
             result = "unknown"
-        signal_earned = signal.points * RESULT_CREDIT[result]
+
+        scores = result in RESULT_CREDIT
+        signal_earned = signal.points * RESULT_CREDIT[result] if scores else 0.0
 
         earned += signal_earned
-        possible += signal.points
+        assessed_points += signal.points
+        if scores:
+            resolved_points += signal.points
         counts[result] += 1
 
         cat = categories.setdefault(
             signal.category,
-            {"earned": 0.0, "possible": 0.0, "confirmed": 0, "absent": 0, "unknown": 0},
+            {
+                "earned": 0.0,
+                "resolved": 0.0,
+                "assessed": 0.0,
+                "confirmed": 0,
+                "absent": 0,
+                "unknown": 0,
+                "not_applicable": 0,
+            },
         )
         cat["earned"] += signal_earned
-        cat["possible"] += signal.points
+        cat["assessed"] += signal.points
+        if scores:
+            cat["resolved"] += signal.points
         cat[result] += 1
 
         if signal.is_veto and result == "absent":
@@ -194,18 +248,32 @@ def compute_scan_scoring(
             }
         )
 
-    for cat in categories.values():
+    weighted_sum = weight_used = 0.0
+    for name, cat in categories.items():
         cat["earned"] = round(cat["earned"], 2)
-        cat["possible"] = round(cat["possible"], 2)
-        cat["pct"] = round(cat["earned"] / cat["possible"], 4) if cat["possible"] else 0.0
+        cat["resolved"] = round(cat["resolved"], 2)
+        cat["assessed"] = round(cat["assessed"], 2)
+        if cat["resolved"]:
+            cat["fit"] = round(cat["earned"] / cat["resolved"], 4)
+            weight = CATEGORY_WEIGHTS.get(name, 0.0)
+            weighted_sum += weight * cat["fit"]
+            weight_used += weight
+        else:
+            cat["fit"] = None
 
-    score_pct = round(earned / possible, 4) if possible else 0.0
+    fit_score = round(weighted_sum / weight_used, 4) if weight_used else 0.0
+    scored = counts["confirmed"] + counts["absent"]
+    assessed = scored + counts["unknown"] + counts["not_applicable"]
+    coverage = round(scored / assessed, 4) if assessed else 0.0
+
     return {
         "per_signal": per_signal,
         "points_earned": round(earned, 2),
-        "points_possible": round(possible, 2),
-        "score_pct": score_pct,
-        "band": band_for(score_pct),
+        "points_resolved": round(resolved_points, 2),
+        "points_possible": round(assessed_points, 2),
+        "score_pct": fit_score,
+        "coverage": coverage,
+        "band": band_for(fit_score, coverage),
         "category_scores": categories,
         "counts": counts,
         "veto_flags": veto_flags,
@@ -296,7 +364,13 @@ async def _company_context(db: AsyncSession, entity: Entity) -> str:
 
 
 def _parse_batch_results(payload: dict) -> dict[int, dict]:
-    verdict_map = {"y": "confirmed", "n": "absent", "?": "unknown"}
+    verdict_map = {
+        "y": "confirmed",
+        "n": "absent",
+        "?": "unknown",
+        "na": "not_applicable",
+        "n/a": "not_applicable",
+    }
     parsed: dict[int, dict] = {}
     for item in payload.get("results") or []:
         try:
@@ -431,6 +505,8 @@ async def process_signal_scan_job(db: AsyncSession, job: AgentJob) -> dict:
     scan.signals_confirmed = scoring["counts"]["confirmed"]
     scan.signals_absent = scoring["counts"]["absent"]
     scan.signals_unknown = scoring["counts"]["unknown"]
+    scan.signals_not_applicable = scoring["counts"]["not_applicable"]
+    scan.coverage = scoring["coverage"]
     scan.rationale = " ".join(rationale_parts)
 
     # The scan score becomes the company's watchlist score

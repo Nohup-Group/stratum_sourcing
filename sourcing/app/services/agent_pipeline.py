@@ -567,22 +567,37 @@ async def process_entity_scorer_job(db: AsyncSession, job: AgentJob) -> dict:
     linked_company_strength = await _linked_company_score(db, entity)
 
     if entity.entity_type == "company":
+        # This is a TRIAGE score — "is this lead worth a signal scan?" — not a
+        # fit score. Every input here is derived from the text of articles that
+        # mention the entity, not from facts about the entity, so it can never
+        # measure thesis fit. Only a signal scan against the library can.
+        #
+        # evidence_depth (log of mention count) used to carry 0.14 of the
+        # weight, and thesis_fit saturated at three co-mention-derived tags.
+        # Together they made the score a popularity ranking: it correlated with
+        # log(mentions) at r=0.762, putting Anthropic top of 1,825 companies at
+        # 0.945 while Dfns sat at 0.622. Mention volume is now recorded as a
+        # diagnostic and deliberately carries no weight.
         components = {
             "thesis_fit": thesis_fit,
             "stage_fit": stage_fit,
             "europe_relevance": europe_relevance,
             "recency_momentum": recency_momentum,
             "source_authority": authority,
-            "evidence_depth": evidence_depth,
+            "mention_volume_diagnostic_only": evidence_depth,
         }
         score_value = (
-            0.28 * thesis_fit
-            + 0.15 * stage_fit
-            + 0.15 * europe_relevance
-            + 0.14 * recency_momentum
-            + 0.14 * authority
-            + 0.14 * evidence_depth
+            0.34 * thesis_fit
+            + 0.22 * stage_fit
+            + 0.22 * europe_relevance
+            + 0.12 * recency_momentum
+            + 0.10 * authority
         )
+        # A company that failed the eligibility gate is not a low-priority lead,
+        # it is not a lead at all. Never let signal count override the gate.
+        if entity.is_eligible is False:
+            components["gate"] = "failed"
+            score_value = 0.0
     else:
         seniority = _keyword_score(texts, PERSON_ROLE_HINTS, max_hits=2)
         components = {
@@ -603,8 +618,12 @@ async def process_entity_scorer_job(db: AsyncSession, job: AgentJob) -> dict:
         )
 
     rationale = (
-        f"{entity.display_name} scored {round(score_value, 3)} based on "
-        f"{', '.join(f'{key}={round(value, 2)}' for key, value in components.items())}."
+        f"{entity.display_name} triage score {round(score_value, 3)} based on "
+        + ", ".join(
+            f"{key}={round(value, 2) if isinstance(value, (int, float)) else value}"
+            for key, value in components.items()
+        )
+        + ". Triage only — thesis fit requires a signal scan."
     )
 
     stmt = select(EntityScore).where(EntityScore.entity_id == entity.id)

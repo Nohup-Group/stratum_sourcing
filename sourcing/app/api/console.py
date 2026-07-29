@@ -74,6 +74,10 @@ def _scan_summary(scan: SignalScan | None) -> dict | None:
         "signals_confirmed": scan.signals_confirmed,
         "signals_absent": scan.signals_absent,
         "signals_unknown": scan.signals_unknown,
+        "signals_not_applicable": scan.signals_not_applicable,
+        # Coverage is shown next to the score, never folded into it. A scan that
+        # resolved 8% of the library is not a moderate company.
+        "coverage": scan.coverage,
         "veto_flags": scan.veto_flags or [],
         "category_scores": scan.category_scores or {},
         "rationale": scan.rationale,
@@ -93,6 +97,10 @@ def _entity_summary(entity: Entity) -> dict:
         "last_seen_at": entity.last_seen_at,
         "finding_count": entity.finding_count,
         "source_count": entity.source_count,
+        "domain": entity.domain,
+        "is_eligible": entity.is_eligible,
+        "lifecycle_status": entity.lifecycle_status,
+        "gate": entity.gate or {},
     }
 
 
@@ -231,6 +239,7 @@ async def list_companies(
     q: str | None = None,
     band: str | None = None,
     scanned_only: bool = False,
+    eligible_only: bool = False,
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_session),
@@ -240,6 +249,8 @@ async def list_companies(
         .outerjoin(EntityScore, EntityScore.entity_id == Entity.id)
         .where(Entity.entity_type == "company")
     )
+    if eligible_only:
+        stmt = stmt.where(Entity.is_eligible.is_(True))
     if q:
         stmt = stmt.where(Entity.display_name.ilike(f"%{q}%"))
     stmt = stmt.order_by(EntityScore.score.desc().nulls_last()).limit(500)
@@ -258,17 +269,20 @@ async def list_companies(
         items.append(
             {
                 **_entity_summary(entity),
-                "heuristic_score": heuristic_score,
+                "triage_score": heuristic_score,
                 "latest_scan": _scan_summary(scan),
             }
         )
 
-    # Scanned companies first (by scan score), then unscanned by heuristic
+    # Eligible first, then scanned (by scan score), then the rest by triage.
+    # Ineligible companies stay visible as context but can never outrank a
+    # company the fund could actually invest in.
     items.sort(
         key=lambda item: (
+            item["is_eligible"] is True,
             item["latest_scan"] is not None,
             item["latest_scan"]["score_pct"] if item["latest_scan"] else 0.0,
-            item["heuristic_score"] or 0.0,
+            item["triage_score"] or 0.0,
         ),
         reverse=True,
     )
@@ -471,22 +485,37 @@ async def weekly_picks(
         for rank, scan in enumerate(scans, start=1)
     ]
 
-    # Rising companies that have not been signal-scanned yet
+    # Leads worth scanning next. This list is NOT a ranking of thesis fit —
+    # triage_score is derived from the articles that mention a company, so it
+    # measures salience. It used to be presented as a score and surfaced
+    # Anthropic, Revolut and Coinbase as the fund's top suggestions. Companies
+    # that failed the eligibility gate are excluded outright.
     scanned_ids = [scan.entity_id for scan in scans]
     rising_stmt = (
         select(Entity, EntityScore.score)
         .join(EntityScore, EntityScore.entity_id == Entity.id)
-        .where(Entity.entity_type == "company")
+        .where(
+            Entity.entity_type == "company",
+            Entity.is_eligible.isnot(False),
+            Entity.lifecycle_status.notin_(("acquired", "dissolved")),
+        )
         .order_by(EntityScore.score.desc())
         .limit(limit * 3)
     )
     rising = [
-        {**_entity_summary(entity), "heuristic_score": score}
+        {**_entity_summary(entity), "triage_score": score}
         for entity, score in (await db.execute(rising_stmt)).all()
         if entity.id not in scanned_ids
     ][:5]
 
-    return {"picks": picks, "rising_unscanned": rising}
+    return {
+        "picks": picks,
+        "rising_unscanned": rising,
+        "rising_note": (
+            "Triage only — ranks how prominent a lead is in our sources, not "
+            "thesis fit. Only a signal scan measures fit."
+        ),
+    }
 
 
 # --- Signal library ---
