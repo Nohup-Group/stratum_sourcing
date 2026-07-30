@@ -119,6 +119,11 @@ def main() -> None:
     conn = psycopg.connect(DSN)
     cur = conn.cursor()
 
+    # Signal library lookup for per-signal evidence rows.
+    cur.execute("select id, number, points from signals")
+    signal_by_number = {number: (sid, points) for sid, number, points in cur.fetchall()}
+    VERDICT_MAP = {"Y": "confirmed", "N": "absent", "?": "unknown", "NA": "not_applicable"}
+
     # Only import companies that were actually scored AND passed the gate.
     # An unscored candidate is a lead, not a pipeline company.
     to_import: list[tuple[dict, dict]] = []
@@ -291,7 +296,8 @@ def main() -> None:
                     score_pct, band, veto_flags, category_scores, signals_confirmed,
                     signals_absent, signals_unknown, signals_not_applicable, coverage,
                     rationale, started_at, completed_at)
-                   values (%s,'completed','manual','manual-agent',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   values (%s,'completed','manual','manual-agent',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   returning id""",
                 (
                     entity_id,
                     math["points_earned"],
@@ -316,6 +322,32 @@ def main() -> None:
                     now,
                 ),
             )
+            scan_id = cur.fetchone()[0]
+            # The scan header without its per-signal rows is a score with no
+            # evidence trail — the console's whole pitch. Write every verdict.
+            for sig in result.get("signals") or []:
+                try:
+                    number = int(sig.get("n"))
+                except (TypeError, ValueError):
+                    continue
+                if number not in signal_by_number:
+                    continue
+                sig_id, sig_points = signal_by_number[number]
+                verdict = VERDICT_MAP.get(str(sig.get("verdict", "?")).strip().upper(), "unknown")
+                cur.execute(
+                    """insert into signal_results
+                       (scan_id, signal_id, result, evidence_url, note, points_earned)
+                       values (%s,%s,%s,%s,%s,%s)
+                       on conflict (scan_id, signal_id) do nothing""",
+                    (
+                        scan_id,
+                        sig_id,
+                        verdict,
+                        (sig.get("url") or "")[:1000] or None,
+                        (sig.get("evidence") or "")[:1000] or None,
+                        sig_points if verdict == "confirmed" else 0.0,
+                    ),
+                )
 
     # --- sources: every place an on-thesis company was found becomes permanent ---
     # Drawn from the WHOLE candidate pool, not just the scored subset: a
