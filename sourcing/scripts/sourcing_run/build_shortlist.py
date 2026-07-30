@@ -37,7 +37,13 @@ def norm(value: str) -> str:
     name — 21X and 21X AG, Tangany and Tangany GmbH — which put eight companies
     on the shortlist twice. Stripping the legal suffix collapses those.
     """
-    text = re.sub(r"[^a-z0-9/. ]+", " ", (value or "").lower())
+    text = (value or "").lower()
+    # Agents sometimes record a description or the legal name in parentheses —
+    # "Axiology (Lithuanian DLT market infrastructure company)", "Eunice
+    # (Reasoon Limited)". That made the key unmatchable, so a stale score
+    # survived in production while the shortlist showed the corrected one.
+    text = re.sub(r"\s*\([^)]*\)", " ", text)
+    text = re.sub(r"[^a-z0-9/. ]+", " ", text)
     text = LEGAL_SUFFIX.sub(" ", text)
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 

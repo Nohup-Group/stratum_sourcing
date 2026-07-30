@@ -24,6 +24,12 @@ from urllib.parse import urlparse
 import psycopg
 
 from score_math import rescore
+# Share the shortlist's identity and engine-preference rules. The import used to
+# dedupe last-wins on a raw name key, so production kept claude-inflated scores
+# for companies the shortlist had already corrected to codex — the console and
+# the shortlist disagreed.
+from build_shortlist import load_scored as load_scored_ranked
+from build_shortlist import norm as shortlist_norm
 
 DSN = "postgresql://postgres:tiUIjkivXjqdtVCTtaaQyAwXIchMujFt@switchback.proxy.rlwy.net:16120/railway"
 PROVENANCE = "stratum3-manual-scan-2026-07-30"
@@ -89,18 +95,13 @@ def is_ingestible_source(
 
 
 def load_scored() -> dict[str, dict]:
-    """Scored results keyed by normalized company name."""
-    out: dict[str, dict] = {}
-    for path in glob.glob("scored_*.json"):
-        try:
-            rows = json.load(open(path, encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001
-            print(f"  !! skipping {path}: {exc}", file=sys.stderr)
-            continue
-        for row in rows if isinstance(rows, list) else [rows]:
-            if isinstance(row, dict) and row.get("company"):
-                out[normalize_name(row["company"])] = row
-    return out
+    """Scored results, deduped exactly as the shortlist does.
+
+    Keyed on the shortlist's identity function (legal suffixes stripped) with
+    its engine preference applied, so production and shortlist.json can never
+    disagree about a company's score.
+    """
+    return load_scored_ranked()
 
 
 def main() -> None:
@@ -122,7 +123,7 @@ def main() -> None:
     # An unscored candidate is a lead, not a pipeline company.
     to_import: list[tuple[dict, dict]] = []
     for cand in pool:
-        result = scored.get(normalize_name(cand["name"]))
+        result = scored.get(shortlist_norm(cand["name"]))
         if result and result.get("verdict") == "SCORED":
             to_import.append((cand, result))
 
@@ -137,7 +138,7 @@ def main() -> None:
         # contradicted their own evidence.
         math = rescore(result)
         name = cand["name"].strip()
-        norm = normalize_name(name)
+        norm = shortlist_norm(name) or normalize_name(name)
         domain = host_of(cand.get("domain"))
         tags = [VERTICAL_TO_TAG.get(cand.get("vertical", ""), "")] or []
         tags = [t for t in tags if t]
@@ -172,11 +173,27 @@ def main() -> None:
             "imported_at": now.isoformat(),
         }
 
-        cur.execute(
-            "select id, metadata from entities where entity_type='company' and normalized_name=%s",
-            (norm,),
-        )
-        row = cur.fetchone()
+        # Match on domain first. Name matching created duplicate rows: a
+        # discovery agent recorded "Axiology (Lithuanian DLT market
+        # infrastructure company)", which normalised to a key that matched no
+        # existing entity, so the import inserted a second Axiology and left
+        # the stale scan attached to the first.
+        row = None
+        if domain:
+            cur.execute(
+                """select id, metadata from entities
+                    where entity_type='company'
+                      and (domain = %s or canonical_url ilike %s)
+                    order by id limit 1""",
+                (domain, f"%{domain}%"),
+            )
+            row = cur.fetchone()
+        if row is None:
+            cur.execute(
+                "select id, metadata from entities where entity_type='company' and normalized_name=%s",
+                (norm,),
+            )
+            row = cur.fetchone()
 
         if row:
             entity_id, existing_meta = row
@@ -272,8 +289,9 @@ def main() -> None:
                 """insert into signal_scans
                    (entity_id, status, scan_depth, trigger, points_earned, points_possible,
                     score_pct, band, veto_flags, category_scores, signals_confirmed,
-                    signals_absent, signals_unknown, rationale, started_at, completed_at)
-                   values (%s,'completed','manual','manual-agent',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    signals_absent, signals_unknown, signals_not_applicable, coverage,
+                    rationale, started_at, completed_at)
+                   values (%s,'completed','manual','manual-agent',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     entity_id,
                     math["points_earned"],
@@ -290,7 +308,9 @@ def main() -> None:
                     ),
                     counts["confirmed"],
                     counts["absent"],
-                    counts["unknown"] + counts["not_applicable"],
+                    counts["unknown"],
+                    counts["not_applicable"],
+                    math["coverage"],
                     (result.get("why") or "")[:4000],
                     now,
                     now,
