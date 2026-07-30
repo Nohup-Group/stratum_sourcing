@@ -2,9 +2,8 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearKey } from "../api";
 
 const NAV = [
-  { to: "/", label: "Pipeline", end: true },
+  { to: "/", label: "Top picks", end: true },
   { to: "/map", label: "Sourcing map" },
-  { to: "/picks", label: "Top picks" },
   { to: "/companies", label: "Companies" },
   { to: "/signals", label: "Signal library" },
   { to: "/sources", label: "Sources" },

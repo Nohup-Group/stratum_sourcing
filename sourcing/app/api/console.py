@@ -298,22 +298,36 @@ async def provenance(db: AsyncSession = Depends(get_session)):
     )
 
     # Provenance: which source surfaced each imported company, from metadata.
+    #
+    # Ranked by how many STRONG-or-MODERATE companies a source produced, not by
+    # raw company count. A directory that surfaced 20 poor companies is not a
+    # better source than a register that surfaced 3 worth meeting — and "where
+    # do the good ones come from" is the question actually worth answering.
     src_name = Entity.metadata_["stratum3"]["found_via"]["source_name"].astext
     src_category = Entity.metadata_["stratum3"]["found_via"]["source_category"].astext
+    band_sq = (
+        select(SignalScan.entity_id, SignalScan.band)
+        .where(SignalScan.status == "completed")
+        .order_by(SignalScan.entity_id, SignalScan.created_at.desc())
+        .distinct(SignalScan.entity_id)
+        .subquery()
+    )
+    qualified = func.count().filter(band_sq.c.band.in_(("strong", "moderate")))
     prov_rows = (
         await db.execute(
-            select(src_name, src_category, func.count())
+            select(src_name, src_category, func.count(), qualified)
+            .outerjoin(band_sq, band_sq.c.entity_id == Entity.id)
             .where(
                 Entity.entity_type == "company",
                 Entity.metadata_["stratum3"].isnot(None),
             )
             .group_by(src_name, src_category)
-            .order_by(func.count().desc())
+            .order_by(qualified.desc(), func.count().desc())
         )
     ).all()
 
     by_source_category: dict[str, int] = {}
-    for _name, category, count in prov_rows:
+    for _name, category, count, _qualified in prov_rows:
         key = category or "unknown"
         by_source_category[key] = by_source_category.get(key, 0) + count
 
@@ -351,8 +365,13 @@ async def provenance(db: AsyncSession = Depends(get_session)):
             if b is not None
         ],
         "top_sources": [
-            {"name": name or "unknown", "category": category or "unknown", "companies": count}
-            for name, category, count in prov_rows[:25]
+            {
+                "name": name or "unknown",
+                "category": category or "unknown",
+                "companies": count,
+                "qualified": qualified,
+            }
+            for name, category, count, qualified in prov_rows[:25]
         ],
         "companies_by_source_category": by_source_category,
         "sources_registered": sources_registered,
@@ -561,7 +580,7 @@ async def request_scan(
 
 @router.get("/picks", dependencies=[protected])
 async def weekly_picks(
-    limit: int = 10,
+    limit: int = 250,
     db: AsyncSession = Depends(get_session),
 ):
     latest_scan_sq = (
@@ -574,7 +593,12 @@ async def weekly_picks(
     scans = (
         (await db.execute(
             select(SignalScan)
-            .where(SignalScan.id.in_(select(latest_scan_sq.c.id)))
+            .join(Entity, Entity.id == SignalScan.entity_id)
+            .where(
+                SignalScan.id.in_(select(latest_scan_sq.c.id)),
+                Entity.is_eligible.is_(True),
+                Entity.lifecycle_status == "live",
+            )
             .options(selectinload(SignalScan.entity))
             .order_by(SignalScan.score_pct.desc())
             .limit(limit)

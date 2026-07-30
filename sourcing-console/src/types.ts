@@ -141,7 +141,7 @@ export interface Provenance {
   eligibility: { eligible: number; rejected: number; not_yet_assessed: number };
   bands: Record<string, number>;
   score_histogram: { bucket: string; count: number }[];
-  top_sources: { name: string; category: string; companies: number }[];
+  top_sources: { name: string; category: string; companies: number; qualified?: number }[];
   companies_by_source_category: Record<string, number>;
   sources_registered: Record<string, number>;
 }

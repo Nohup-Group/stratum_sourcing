@@ -166,13 +166,14 @@ export default function SourcingMapPage() {
         {/* ---------- named sources ---------- */}
         <section className="panel">
           <h2 className="panel-title">Highest-yield sources</h2>
-          <p className="panel-sub">Named lists, ranked by companies surfaced.</p>
+          <p className="panel-sub">Named lists, ranked by how many companies worth meeting they produced — not by raw volume.</p>
           <table className="table compact">
             <thead>
               <tr>
                 <th>Source</th>
                 <th>Type</th>
-                <th className="num">Companies</th>
+                <th className="num">Worth meeting</th>
+                <th className="num">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +185,8 @@ export default function SourcingMapPage() {
                       {SOURCE_CATEGORY_LABELS[s.category] ?? s.category}
                     </span>
                   </td>
-                  <td className="num">{s.companies}</td>
+                  <td className="num"><strong>{s.qualified ?? 0}</strong></td>
+                  <td className="num muted">{s.companies}</td>
                 </tr>
               ))}
             </tbody>

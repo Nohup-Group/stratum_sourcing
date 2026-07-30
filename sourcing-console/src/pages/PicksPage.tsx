@@ -2,15 +2,25 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { PicksResponse } from "../types";
-import { BandPill, timeAgo } from "../components/widgets";
+import { BandPill } from "../components/widgets";
+
+const PAGE = 25;
 
 export default function PicksPage() {
   const [data, setData] = useState<PicksResponse | null>(null);
+  const [shown, setShown] = useState(PAGE);
+  const [onlyMeet, setOnlyMeet] = useState(true);
+
   useEffect(() => {
     api.get<PicksResponse>("/api/console/picks").then(setData);
   }, []);
 
   if (!data) return <div className="loading">Loading picks…</div>;
+
+  const ranked = onlyMeet
+    ? data.picks.filter((p) => p.scan.band === "strong" || p.scan.band === "moderate")
+    : data.picks;
+  const visible = ranked.slice(0, shown);
 
   return (
     <>
@@ -18,17 +28,27 @@ export default function PicksPage() {
         <h1>Top picks</h1>
       </div>
       <p className="page-sub">
-        Companies ranked by their latest 200-signal scan. Each score is an evidence
-        trail, not an opinion — open a company to see exactly which signals fired.
+        Every company that passed the thesis gate, ranked by its 200-signal scan.
+        The score is an evidence trail, not an opinion — open any company to see
+        exactly which signals were hit and which were not.
       </p>
 
-      {data.picks.length === 0 ? (
-        <div className="empty">
-          No completed signal scans yet. Queue scans from a company page.
+      <div className="filter-row">
+        <div className="seg" role="group" aria-label="Filter picks">
+          <button className={onlyMeet ? "on" : ""} onClick={() => { setOnlyMeet(true); setShown(PAGE); }}>
+            Worth meeting ({data.picks.filter((p) => p.scan.band === "strong" || p.scan.band === "moderate").length})
+          </button>
+          <button className={onlyMeet ? "" : "on"} onClick={() => { setOnlyMeet(false); setShown(PAGE); }}>
+            All scored ({data.picks.length})
+          </button>
         </div>
+      </div>
+
+      {ranked.length === 0 ? (
+        <div className="empty">No completed signal scans yet.</div>
       ) : (
         <div className="grid">
-          {data.picks.map((pick) => (
+          {visible.map((pick) => (
             <Link key={pick.entity.id} to={`/companies/${pick.entity.id}`}>
               <div className="card" style={{ display: "grid", gap: 10 }}>
                 <div className="flex spread">
@@ -69,9 +89,11 @@ export default function PicksPage() {
                   </div>
                 ) : null}
                 <div className="small faint">
-                  {pick.scan.signals_confirmed} confirmed · {pick.scan.signals_absent}{" "}
-                  absent · {pick.scan.signals_unknown} unknown — scanned{" "}
-                  {timeAgo(pick.scan.completed_at)}
+                  <strong style={{ color: "var(--ok)" }}>
+                    {pick.scan.signals_confirmed} signals hit
+                  </strong>{" "}
+                  · {pick.scan.signals_absent} not hit ·{" "}
+                  {Math.round((pick.scan.coverage ?? 0) * 100)}% of the framework resolved
                 </div>
               </div>
             </Link>
@@ -79,37 +101,14 @@ export default function PicksPage() {
         </div>
       )}
 
-      {data.rising_unscanned.length > 0 ? (
-        <>
-          <div className="section-title">Rising — not yet signal-scanned</div>
-          <div className="card tablewrap">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th className="num">Monitor score</th>
-                  <th className="num">Findings</th>
-                  <th>Last seen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rising_unscanned.map((entity) => (
-                  <tr key={entity.id} className="rowlink">
-                    <td>
-                      <Link to={`/companies/${entity.id}`}>
-                        <strong>{entity.display_name}</strong>
-                      </Link>
-                    </td>
-                    <td className="num">{(entity.triage_score ?? 0).toFixed(2)}</td>
-                    <td className="num">{entity.finding_count}</td>
-                    <td>{timeAgo(entity.last_seen_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {shown < ranked.length ? (
+        <div style={{ textAlign: "center", margin: "18px 0" }}>
+          <button className="btn" onClick={() => setShown((n) => n + PAGE)}>
+            Show {Math.min(PAGE, ranked.length - shown)} more — {ranked.length - shown} remaining
+          </button>
+        </div>
       ) : null}
+
     </>
   );
 }

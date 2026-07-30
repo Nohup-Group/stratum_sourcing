@@ -17,8 +17,6 @@ export default function CompanyPage() {
   const { id } = useParams();
   const [company, setCompany] = useState<CompanyDetail | null>(null);
   const [resultFilter, setResultFilter] = useState<ResultFilter>("confirmed");
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
-  const [queueing, setQueueing] = useState(false);
 
   const load = useCallback(() => {
     api.get<CompanyDetail>(`/api/console/companies/${id}`).then(setCompany);
@@ -66,25 +64,6 @@ export default function CompanyPage() {
     return { label, value: value ?? null, detail };
   });
 
-  async function queueScan(depth: "standard" | "full") {
-    setQueueing(true);
-    setScanMessage(null);
-    try {
-      const response = await api.post<{ status: string; reason?: string }>(
-        `/api/console/companies/${id}/scan`,
-        { scan_depth: depth, force: Boolean(scan) }
-      );
-      setScanMessage(
-        response.status === "queued"
-          ? `Scan queued (${depth}) — results appear here when the worker completes it.`
-          : `Skipped: ${response.reason}`
-      );
-    } catch {
-      setScanMessage("Could not queue the scan.");
-    } finally {
-      setQueueing(false);
-    }
-  }
 
   return (
     <>
@@ -119,14 +98,22 @@ export default function CompanyPage() {
               <div className="flex spread">
                 <ScorePct value={scan.score_pct} />
                 <div className="small muted" style={{ textAlign: "right" }}>
-                  {scan.points_earned} / {scan.points_possible} points
+                  {Math.round((scan.coverage ?? 0) * 100)}% of signals resolved
                   <br />
-                  {scan.scan_depth} scan · {timeAgo(scan.completed_at)}
+                  {scan.signals_confirmed + scan.signals_absent} of{" "}
+                  {scan.signals_confirmed +
+                    scan.signals_absent +
+                    scan.signals_unknown +
+                    (scan.signals_not_applicable ?? 0)}{" "}
+                  checked
                 </div>
               </div>
               <div className="small muted">
-                {scan.signals_confirmed} confirmed · {scan.signals_absent} absent ·{" "}
-                {scan.signals_unknown} unknown
+                <strong style={{ color: "var(--ok)" }}>{scan.signals_confirmed} hit</strong> ·{" "}
+                {scan.signals_absent} not hit · {scan.signals_unknown} unresolved
+                {scan.signals_not_applicable
+                  ? ` · ${scan.signals_not_applicable} not applicable`
+                  : ""}
               </div>
               {scan.rationale ? <p className="small" style={{ margin: 0 }}>{scan.rationale}</p> : null}
               {scan.veto_flags.length > 0 ? (
@@ -141,28 +128,8 @@ export default function CompanyPage() {
               ) : null}
             </div>
           ) : (
-            <div className="empty">
-              Not signal-scanned yet. Queue a scan to score this company against the
-              framework.
-            </div>
+            <div className="empty">Not signal-scanned yet.</div>
           )}
-          <div className="flex" style={{ marginTop: 14 }}>
-            <button
-              className="btn primary"
-              disabled={queueing}
-              onClick={() => queueScan("standard")}
-            >
-              {scan ? "Re-scan (standard)" : "Run standard scan"}
-            </button>
-            <button className="btn" disabled={queueing} onClick={() => queueScan("full")}>
-              Full 200-signal scan
-            </button>
-          </div>
-          {scanMessage ? (
-            <p className="small muted" style={{ marginBottom: 0 }}>
-              {scanMessage}
-            </p>
-          ) : null}
         </div>
 
         <div className="card">

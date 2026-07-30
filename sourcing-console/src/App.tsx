@@ -29,9 +29,11 @@ export default function App() {
           </RequireKey>
         }
       >
-        <Route path="/" element={<PipelinePage />} />
+        <Route path="/" element={<PicksPage />} />
         <Route path="/map" element={<SourcingMapPage />} />
-        <Route path="/picks" element={<PicksPage />} />
+        <Route path="/picks" element={<Navigate to="/" replace />} />
+        {/* operator view: still reachable, but off the demo nav */}
+        <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/companies" element={<CompaniesPage />} />
         <Route path="/companies/:id" element={<CompanyPage />} />
         <Route path="/signals" element={<SignalsPage />} />

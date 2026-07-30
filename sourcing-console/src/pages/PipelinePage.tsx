@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Overview } from "../types";
-import { BarRow, StatTile, timeAgo } from "../components/widgets";
+import {BarRow, StatTile} from "../components/widgets";
 
 const SOURCE_CATEGORY_LABELS: Record<string, string> = {
   company: "Companies",
@@ -38,7 +38,6 @@ export default function PipelinePage() {
   if (!data) return <div className="loading">Loading pipeline…</div>;
 
   const attributionTotal = Object.values(data.attribution).reduce((a, b) => a + b, 0);
-  const lastRun = data.recent_runs[0];
 
   return (
     <>
@@ -131,41 +130,6 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="section-title">Recent scan runs</div>
-      <div className="card tablewrap">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th>Started</th>
-              <th>Status</th>
-              <th className="num">Sources OK</th>
-              <th className="num">Failed</th>
-              <th className="num">Findings</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.recent_runs.map((run) => (
-              <tr key={run.id}>
-                <td className="mono">#{run.id}</td>
-                <td>{timeAgo(run.started_at)}</td>
-                <td>{run.status}</td>
-                <td className="num">
-                  {run.sources_ok}/{run.sources_total}
-                </td>
-                <td className="num">{run.sources_failed}</td>
-                <td className="num">{run.findings_count}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {lastRun ? (
-        <p className="small faint" style={{ marginTop: 8 }}>
-          Last run {timeAgo(lastRun.started_at)} — the machine runs nightly plus
-          cadence scans through the day.
-        </p>
-      ) : null}
     </>
   );
 }
