@@ -80,6 +80,7 @@ export default function SourcingMapPage() {
             const pct = (stage.count / top) * 100;
             const prev = i > 0 ? data.funnel[i - 1].count : null;
             const dropped = prev != null ? prev - stage.count : null;
+            const survived = prev ? (stage.count / prev) * 100 : null;
             return (
               <div key={stage.stage} className="funnel-row">
                 <div className="funnel-meta">
@@ -87,12 +88,20 @@ export default function SourcingMapPage() {
                   <span className="funnel-note">{stage.note}</span>
                 </div>
                 <div className="funnel-bar-wrap">
+                  {/* Absolute scale — the collapse from thousands to a handful
+                      is the point, so the bars are not normalised per stage.
+                      The survival rate carries the detail the bar cannot. */}
                   <div
                     className="funnel-bar"
-                    style={{ width: `${Math.max(pct, 0.4)}%` }}
+                    style={{ width: `${Math.max(pct, 0.6)}%` }}
                     data-final={i === data.funnel.length - 1 ? "true" : undefined}
                   />
                   <span className="funnel-count">{stage.count.toLocaleString()}</span>
+                  {survived != null ? (
+                    <span className="funnel-rate">
+                      {survived < 1 ? survived.toFixed(1) : Math.round(survived)}% of previous
+                    </span>
+                  ) : null}
                 </div>
                 {dropped != null && dropped > 0 ? (
                   <div className="funnel-drop">−{dropped.toLocaleString()} filtered out</div>

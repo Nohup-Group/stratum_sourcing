@@ -394,3 +394,7 @@ tr.rowlink:hover td { background: var(--panel-2); }
 .panel-title { font-size: 14px; font-weight: 650; margin: 0 0 2px; }
 .panel-sub { color: var(--faint); font-size: 12.5px; margin: 0 0 12px; }
 .table.compact td, .table.compact th { padding: 6px 8px; font-size: 12.5px; }
+.funnel-rate {
+  font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
