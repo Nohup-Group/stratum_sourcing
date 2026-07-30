@@ -44,12 +44,23 @@ invest in scored 0.26–0.62; the ones it can never invest in scored 0.78–0.95
 
 ## 3. Current numbers
 
-See `shortlist.json` / `SHORTLIST.md` for the live figures — they move every
-few minutes while the run continues. At time of writing: pool ~605 candidates,
-~254 shortlisted, **~23 rated meet**.
+Live figures are in `shortlist.json` / `SHORTLIST.md`, regenerated continuously
+while the run finishes. As of the last pass:
 
-Funnel on the console: **2,796 entities → 1,295 companies → 83 through the gate
-→ 16–25 strong or moderate.**
+| | |
+|---|---:|
+| Candidates discovered | **605** |
+| Scored | **510** (approx; backlog still draining) |
+| Passed the gate and scanned | **410** |
+| **Rated meet** | **24** |
+| Bands | 0 strong · 25 moderate · 107 weak · 278 poor |
+
+Meet-rated companies span **12 countries**: Switzerland (5), United Kingdom (3), Netherlands (3), Luxembourg (2), Ireland (2), Germany (2), Norway (2), Bulgaria (1), Denmark (1), Romania (1), France (1), Finland (1).
+Coverage across the meet list runs **0.74–1.00**; four companies
+(Finologee, Evrotrust, Fipto, Enable Banking) resolved **every** assessed signal.
+
+Funnel on the console: **2,796 entities → 1,295 companies → 83+ through the gate
+→ 24 worth meeting.**
 
 ## 4. Calibration — resolved, and it changed the list
 
