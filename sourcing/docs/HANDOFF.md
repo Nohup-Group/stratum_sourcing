@@ -42,25 +42,35 @@ invest in scored 0.26–0.62; the ones it can never invest in scored 0.78–0.95
 | Gate-passed with full scans | 0 | see §3 |
 | Discovery sources registered | 131 | **414** |
 
-## 3. Current numbers
+## 3. Final numbers — run complete
 
-Live figures are in `shortlist.json` / `SHORTLIST.md`, regenerated continuously
-while the run finishes. As of the last pass:
+Every one of the 605 discovered companies was scored. No backlog remains.
 
 | | |
 |---|---:|
-| Candidates discovered | **605** |
-| Scored | **510** (approx; backlog still draining) |
-| Passed the gate and scanned | **410** |
-| **Rated meet** | **24** |
-| Bands | 0 strong · 25 moderate · 107 weak · 278 poor |
+| Entities extracted | **3,173** |
+| Typed as companies | 1,672 |
+| **Passed the thesis gate** | **462** |
+| Signal-scanned | 462 |
+| **Rated meet** | **25** |
+| Rated monitor | 99 |
+| Bands | 0 strong · 27 moderate · 116 weak · 323 poor |
 
-Meet-rated companies span **12 countries**: Switzerland (5), United Kingdom (3), Netherlands (3), Luxembourg (2), Ireland (2), Germany (2), Norway (2), Bulgaria (1), Denmark (1), Romania (1), France (1), Finland (1).
-Coverage across the meet list runs **0.74–1.00**; four companies
-(Finologee, Evrotrust, Fipto, Enable Banking) resolved **every** assessed signal.
+139 rejected at the gate, 2 unresolved, **zero thin scans** — every scored
+company cleared 40% coverage.
 
-Funnel on the console: **2,796 entities → 1,295 companies → 83+ through the gate
-→ 24 worth meeting.**
+The meet list spans **12 countries**: Switzerland (5), UK (4), Netherlands (3), Luxembourg (2), Ireland (2), Germany (2), Norway (2), Bulgaria (1), Denmark (1), Romania (1), France (1), Finland (1).
+Verticals: data-middleware 18, compliance 4, identity 3.
+Cheque fit: core 18, unknown 5, stretch 2.
+Coverage **0.74–1.00**; only
+2 carry a "gate passed without evidence" flag.
+
+**Where the gate-passing companies came from** — the thesis of the whole rebuild
+in one row of data: directories 141, associations 72, registers 70, VC
+portfolios 70, accelerators 39, sandboxes 25, conferences 20, consortia 10 —
+and **press 2, research 1**. Lists produce investable companies; news does not.
+The old pipeline drew 1,491 attributions from newsletters and yielded almost
+nothing.
 
 ## 4. Calibration — resolved, and it changed the list
 
