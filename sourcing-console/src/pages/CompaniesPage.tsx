@@ -21,6 +21,7 @@ export default function CompaniesPage() {
   const [query, setQuery] = useState("");
   const [band, setBand] = useState<string>("all");
   const [eligibleOnly, setEligibleOnly] = useState(false);
+  const [s3vOnly, setS3vOnly] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const buildParams = useCallback(
@@ -32,9 +33,10 @@ export default function CompaniesPage() {
       if (query) params.set("q", query);
       if (band !== "all") params.set("band", band);
       if (eligibleOnly) params.set("eligible_only", "true");
+      if (s3vOnly) params.set("list_tag", "s3v-pipeline");
       return params;
     },
-    [query, band, eligibleOnly]
+    [query, band, eligibleOnly, s3vOnly]
   );
 
   useEffect(() => {
@@ -99,6 +101,13 @@ export default function CompaniesPage() {
           aria-pressed={eligibleOnly}
         >
           Eligible only
+        </button>
+        <button
+          className={`btn${s3vOnly ? " primary" : ""}`}
+          onClick={() => setS3vOnly(!s3vOnly)}
+          aria-pressed={s3vOnly}
+        >
+          S3V pipeline
         </button>
         {items ? (
           <span className="small muted">

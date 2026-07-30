@@ -108,6 +108,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--include-ineligible",
+        action="store_true",
+        help="Also import gate-failed companies (visible as ineligible, with "
+        "their scans) instead of treating them as mere leads.",
+    )
     args = ap.parse_args()
     if not (args.commit or args.dry_run):
         ap.error("pass --dry-run or --commit")
@@ -129,7 +135,10 @@ def main() -> None:
     to_import: list[tuple[dict, dict]] = []
     for cand in pool:
         result = scored.get(shortlist_norm(cand["name"]))
-        if result and result.get("verdict") == "SCORED":
+        if result is None:
+            continue
+        verdicts = {"SCORED"} | ({"INELIGIBLE"} if args.include_ineligible else set())
+        if result.get("verdict") in verdicts:
             to_import.append((cand, result))
 
     print(f"candidates      : {len(pool)}")
@@ -147,16 +156,36 @@ def main() -> None:
         domain = host_of(cand.get("domain"))
         tags = [VERTICAL_TO_TAG.get(cand.get("vertical", ""), "")] or []
         tags = [t for t in tags if t]
+        eligible = result.get("verdict") == "SCORED"
+
+        # Profile facts: prefer what discovery recorded, fall back to what the
+        # scoring session researched — a pool built from a bare name list has
+        # "?" everywhere, and "?" must never reach the console profile.
+        def fact(pool_key: str, result_key: str):
+            v = cand.get(pool_key)
+            if v not in (None, "", "?"):
+                return v
+            return result.get(result_key)
+
+        hq_city, hq_country = cand.get("hq_city"), cand.get("hq_country")
+        if hq_city in (None, "", "?"):
+            parts = [p.strip() for p in (result.get("hq_city_country") or "").split(",", 1)]
+            hq_city = parts[0] or None
+            if len(parts) > 1 and hq_country in (None, "", "?"):
+                hq_country = parts[1]
+        if hq_country == "?":
+            hq_country = None
 
         stratum3 = {
             "provenance": PROVENANCE,
+            "lists": ["s3v-pipeline"],
             "domain": domain,
             "registry_id": cand.get("registry_id"),
-            "hq_city": cand.get("hq_city"),
-            "hq_country": cand.get("hq_country"),
-            "founded_year": cand.get("founded_year"),
-            "stage": cand.get("stage"),
-            "total_raised": cand.get("total_raised"),
+            "hq_city": hq_city,
+            "hq_country": hq_country,
+            "founded_year": fact("founded_year", "founded_year"),
+            "stage": fact("stage", "stage"),
+            "total_raised": fact("total_raised", "total_raised_eur"),
             "raised_eur_m": cand.get("raised_eur_m"),
             "cheque_fit": result.get("cheque_fit") or cand.get("cheque_fit"),
             "sells_to": cand.get("sells_to"),
@@ -164,7 +193,8 @@ def main() -> None:
             "founders": result.get("founders") or cand.get("founders") or [],
             "investors": cand.get("investors") or [],
             "found_via": cand.get("found_via") or {},
-            "is_eligible": True,
+            "is_eligible": eligible,
+            "ineligible_reason": result.get("ineligible_reason"),
             "gate": result.get("gate") or {},
             "coverage": math["coverage"],
             "fit_score": math["fit"],
@@ -214,7 +244,7 @@ def main() -> None:
                               registry_id=%s,
                               lifecycle_status='live',
                               lifecycle_checked_at=%s,
-                              is_eligible=true,
+                              is_eligible=%s,
                               gate=%s,
                               last_seen_at=%s
                         where id=%s""",
@@ -226,6 +256,7 @@ def main() -> None:
                         domain,
                         cand.get("registry_id"),
                         now,
+                        eligible,
                         json.dumps(result.get("gate") or {}),
                         now,
                         entity_id,
@@ -241,7 +272,7 @@ def main() -> None:
                         source_count, finding_count, domain, registry_id,
                         lifecycle_status, lifecycle_checked_at, is_eligible, gate)
                        values ('company', %s, %s, %s, %s, %s, %s, %s, %s, 1, 0,
-                               %s, %s, 'live', %s, true, %s)
+                               %s, %s, 'live', %s, %s, %s)
                        returning id""",
                     (
                         name,
@@ -255,6 +286,7 @@ def main() -> None:
                         domain,
                         cand.get("registry_id"),
                         now,
+                        eligible,
                         json.dumps(result.get("gate") or {}),
                     ),
                 )

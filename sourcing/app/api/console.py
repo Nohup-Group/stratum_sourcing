@@ -387,6 +387,7 @@ async def list_companies(
     band: str | None = None,
     scanned_only: bool = False,
     eligible_only: bool = False,
+    list_tag: str | None = None,
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_session),
@@ -405,6 +406,9 @@ async def list_companies(
     filters = [Entity.entity_type == "company"]
     if eligible_only:
         filters.append(Entity.is_eligible.is_(True))
+    if list_tag:
+        # Named cohort membership, e.g. "s3v-pipeline" (Stratum's own list)
+        filters.append(Entity.metadata_["stratum3"]["lists"].contains([list_tag]))
     if q:
         filters.append(Entity.display_name.ilike(f"%{q}%"))
     if band:
