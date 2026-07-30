@@ -51,22 +51,34 @@ few minutes while the run continues. At time of writing: pool ~605 candidates,
 Funnel on the console: **2,796 entities → 1,295 companies → 83 through the gate
 → 16–25 strong or moderate.**
 
-## 4. The open calibration question — read this before demoing
+## 4. Calibration — resolved, and it changed the list
 
-**Codex and Claude do not score the same company the same way.** On the first
-head-to-head, Axiology scored **0.74 (strong) on Claude and 0.43 (weak) on
-codex** under an identical contract and identical arithmetic. The gap is
-verdict generosity: how readily each engine calls a signal confirmed.
+**Claude scores ~0.31 higher than codex on identical rules.** Measured on four
+blind head-to-head pairs:
 
-Codex scored 225 of 232 shortlisted companies, so codex is the reference
-population and dedupe now prefers it. A blind codex re-score of the seven
-claude-scored companies — which include the demo's then top three, Apiax,
-Authologic and Salv — was running when this was written. Check
-`scored_recheck.json` and compare before trusting the top of the list.
+| Company | Claude | Codex | Δ | Signals resolved |
+|---|---|---|---|---|
+| Apiax | 0.75 | 0.40 | +0.35 | 31 → 55 |
+| Salv | 0.59 | 0.28 | +0.32 | 37 → 55 |
+| Axiology | 0.74 | 0.43 | +0.31 | — |
+| Authologic | 0.70 | 0.43 | +0.26 | 28 → 62 |
 
-Claude bulk scoring at the 04:56 quota reset is **gated**: `resume_after_limit.sh`
-no-ops unless a file named `GO_CLAUDE_SCORING` exists. Write that file only if
-the measured bias is small.
+**Codex is the more rigorous grader, not the stingier one.** It resolves ~1.7×
+more signals per company. On Apiax it returned 25 confirmed and 30 absent where
+Claude returned 24 confirmed and 7 absent — codex confirms *more*, but checks
+far more and finds far more genuinely missing. Since fit is
+`confirmed / resolved`, checking harder scores lower, correctly. Claude's higher
+numbers came from a thinner denominator, which is the exact failure mode the
+coverage metric exists to expose.
+
+**Consequences:**
+- Codex is the single grader. `GO_CLAUDE_SCORING` was deliberately **not**
+  written, so `resume_after_limit.sh` no-ops at 04:56 and logs why. Do not
+  create that file without re-measuring.
+- Dedupe prefers codex over claude for any company scored by both.
+- Apiax, Axiology, Authologic and Salv — which had been the top of the list —
+  all fall to `weak` and out of `meet`. **Nothing scores `strong` any more.**
+  The honest list is ~20 companies, all `moderate`, with coverage 0.80–1.00.
 
 ## 5. Demo guidance
 
