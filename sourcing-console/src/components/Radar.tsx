@@ -41,7 +41,7 @@ export default function Radar({
   const n = axes.length;
   if (!n) return null;
 
-  const pad = 34;
+  const pad = 52;
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - pad;

@@ -61,21 +61,45 @@ export function BarRow({
   );
 }
 
+type CategoryScore = {
+  earned: number;
+  /** Points from signals that were resolved (confirmed or absent). */
+  resolved?: number;
+  /** Legacy name for the same idea, from scans written before the recalibration. */
+  possible?: number;
+  fit?: number | null;
+  pct?: number | null;
+};
+
 export function CategoryBars({
   scores,
 }: {
-  scores: Record<string, { earned: number; possible: number; pct: number }>;
+  scores: Record<string, CategoryScore>;
 }) {
-  const entries = Object.entries(scores).sort((a, b) => b[1].pct - a[1].pct);
+  const entries = Object.entries(scores)
+    // Keys prefixed with _ are bookkeeping stored alongside the categories
+    // (coverage, provenance), not signal categories to chart.
+    .filter(([category]) => !category.startsWith("_"))
+    .map(([category, score]) => {
+      const denominator = score.resolved ?? score.possible ?? 0;
+      const value = score.fit ?? score.pct ?? (denominator ? score.earned / denominator : null);
+      return { category, score, denominator, value };
+    })
+    .sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+
   return (
     <div>
-      {entries.map(([category, score]) => (
+      {entries.map(({ category, score, denominator, value }) => (
         <BarRow
           key={category}
           label={category}
-          pct={score.pct}
-          detail={`${score.earned}/${score.possible}`}
-          title={`${category}: ${Math.round(score.pct * 100)}% (${score.earned} of ${score.possible} points)`}
+          pct={value ?? 0}
+          detail={value == null ? "—" : `${score.earned}/${denominator}`}
+          title={
+            value == null
+              ? `${category}: nothing resolved`
+              : `${category}: ${Math.round(value * 100)}% (${score.earned} of ${denominator} resolved points)`
+          }
         />
       ))}
     </div>
