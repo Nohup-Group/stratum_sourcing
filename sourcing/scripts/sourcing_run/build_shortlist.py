@@ -99,6 +99,15 @@ def load_scored() -> dict[str, dict]:
     return out
 
 
+def link(domain: str | None) -> str:
+    """Markdown-safe URL. Agents recorded some domains bare ("21x.eu"), which
+    renders as a relative link and does not resolve."""
+    if not domain:
+        return ""
+    domain = domain.strip()
+    return domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
+
+
 def derive_rec(band: str, veto_flags: list) -> str:
     """Derive the verdict from the evidence rather than trusting the agent's label.
 
@@ -147,7 +156,7 @@ def write_markdown(rows: list[dict]) -> None:
         out.append("|---|---|---|---|---|---|---|---|---|---|")
         for i, r in enumerate(group, 1):
             out.append(
-                f"| {i} | **[{r['name']}]({r['domain'] or ''})** | {r['hq'] or '?'} | "
+                f"| {i} | **[{r['name']}]({link(r['domain'])})** | {r['hq'] or '?'} | "
                 f"{r['founded'] or '?'} | {r['raised'] or '?'} | {r['cheque_fit'] or '?'} | "
                 f"{r['vertical'] or '?'} | {r['fit']} | {r['coverage']} | {r['band']} |"
             )
