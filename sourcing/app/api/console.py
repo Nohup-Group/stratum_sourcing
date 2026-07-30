@@ -14,9 +14,9 @@ from datetime import datetime, timedelta, timezone
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.api.deps import get_session
 from app.config import settings
@@ -391,49 +391,63 @@ async def list_companies(
     offset: int = 0,
     db: AsyncSession = Depends(get_session),
 ):
-    stmt: Select = (
-        select(Entity, EntityScore.score)
-        .outerjoin(EntityScore, EntityScore.entity_id == Entity.id)
-        .where(Entity.entity_type == "company")
+    # Latest completed scan per company, joined in SQL so band/scanned filters
+    # and pagination apply to the full universe — no row cap.
+    latest_scan_sq = (
+        select(SignalScan)
+        .where(SignalScan.status == "completed")
+        .order_by(SignalScan.entity_id, SignalScan.created_at.desc())
+        .distinct(SignalScan.entity_id)
+        .subquery()
     )
+    scan_alias = aliased(SignalScan, latest_scan_sq)
+
+    filters = [Entity.entity_type == "company"]
     if eligible_only:
-        stmt = stmt.where(Entity.is_eligible.is_(True))
+        filters.append(Entity.is_eligible.is_(True))
     if q:
-        stmt = stmt.where(Entity.display_name.ilike(f"%{q}%"))
-    stmt = stmt.order_by(EntityScore.score.desc().nulls_last()).limit(500)
-    rows = (await db.execute(stmt)).all()
+        filters.append(Entity.display_name.ilike(f"%{q}%"))
+    if band:
+        filters.append(scan_alias.band == band)
+    if scanned_only and not band:
+        filters.append(scan_alias.id.isnot(None))
 
-    entity_ids = [entity.id for entity, _ in rows]
-    latest_scans = await _latest_scans_by_entity(db, entity_ids)
+    base = (
+        select(Entity, EntityScore.score, scan_alias)
+        .outerjoin(EntityScore, EntityScore.entity_id == Entity.id)
+        .outerjoin(scan_alias, scan_alias.entity_id == Entity.id)
+        .where(*filters)
+    )
 
-    items = []
-    for entity, heuristic_score in rows:
-        scan = latest_scans.get(entity.id)
-        if scanned_only and scan is None:
-            continue
-        if band and (scan is None or scan.band != band):
-            continue
-        items.append(
-            {
-                **_entity_summary(entity),
-                "triage_score": heuristic_score,
-                "latest_scan": _scan_summary(scan),
-            }
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(Entity)
+            .outerjoin(scan_alias, scan_alias.entity_id == Entity.id)
+            .where(*filters)
         )
+    ).scalar_one()
 
     # Eligible first, then scanned (by scan score), then the rest by triage.
     # Ineligible companies stay visible as context but can never outrank a
     # company the fund could actually invest in.
-    items.sort(
-        key=lambda item: (
-            item["is_eligible"] is True,
-            item["latest_scan"] is not None,
-            item["latest_scan"]["score_pct"] if item["latest_scan"] else 0.0,
-            item["triage_score"] or 0.0,
-        ),
-        reverse=True,
-    )
-    return {"total": len(items), "items": items[offset : offset + limit]}
+    stmt = base.order_by(
+        Entity.is_eligible.desc().nulls_last(),
+        scan_alias.score_pct.desc().nulls_last(),
+        EntityScore.score.desc().nulls_last(),
+        Entity.id,
+    ).offset(offset).limit(limit)
+    rows = (await db.execute(stmt)).all()
+
+    items = [
+        {
+            **_entity_summary(entity),
+            "triage_score": triage_score,
+            "latest_scan": _scan_summary(scan),
+        }
+        for entity, triage_score, scan in rows
+    ]
+    return {"total": total, "items": items}
 
 
 @router.get("/companies/{entity_id}", dependencies=[protected])

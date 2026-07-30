@@ -164,7 +164,13 @@ button {
 .pill.strong { color: var(--good); background: var(--good-soft); }
 .pill.moderate { color: var(--accent); background: var(--accent-soft); }
 .pill.weak { color: var(--warn); background: var(--warn-soft); }
+.pill.poor { color: var(--muted); background: var(--panel-2); }
 .pill.insufficient { color: var(--muted); background: var(--panel-2); }
+.pill.insufficient-evidence {
+  color: var(--faint);
+  background: transparent;
+  border: 1px dashed var(--hairline);
+}
 .pill.veto { color: var(--crit); background: var(--crit-soft); }
 .pill.tier { color: var(--muted); background: var(--panel-2); font-weight: 500; }
 .pill.high { color: var(--accent); background: var(--accent-soft); }

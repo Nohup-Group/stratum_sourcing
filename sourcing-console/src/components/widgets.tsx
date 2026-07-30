@@ -22,6 +22,8 @@ const BAND_LABELS: Record<string, string> = {
   strong: "Strong signal",
   moderate: "Moderate",
   weak: "Weak",
+  poor: "Poor",
+  "insufficient-evidence": "Insufficient evidence",
   insufficient: "Insufficient",
 };
 
