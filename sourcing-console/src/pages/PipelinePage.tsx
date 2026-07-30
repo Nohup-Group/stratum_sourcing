@@ -14,12 +14,19 @@ const SOURCE_CATEGORY_LABELS: Record<string, string> = {
   regulator: "Regulators",
 };
 
-const BAND_ORDER = ["strong", "moderate", "weak", "insufficient"] as const;
+const BAND_ORDER = [
+  "strong",
+  "moderate",
+  "weak",
+  "poor",
+  "insufficient-evidence",
+] as const;
 const BAND_LABELS: Record<string, string> = {
   strong: "Strong (≥70%)",
   moderate: "Moderate (50–69%)",
   weak: "Weak (35–49%)",
-  insufficient: "Insufficient (<35%)",
+  poor: "Poor (<35%)",
+  "insufficient-evidence": "Insufficient evidence (<40% coverage)",
 };
 
 export default function PipelinePage() {
@@ -81,7 +88,7 @@ export default function PipelinePage() {
 
       <div className="grid cols-2" style={{ marginTop: 14 }}>
         <div className="card">
-          <div className="section-title">Where companies come from</div>
+          <div className="section-title">Coverage by source type</div>
           {attributionTotal === 0 ? (
             <div className="empty">No attribution data yet.</div>
           ) : (
@@ -98,8 +105,9 @@ export default function PipelinePage() {
               ))
           )}
           <p className="small muted" style={{ marginBottom: 0 }}>
-            Companies surfaced by our own monitored sources — alongside commodity
-            data-broker coverage and the partners' own network.
+            How much raw coverage each source type produces — not how many
+            investable companies it yields. See the sourcing map for that:
+            registers and sandbox cohorts convert far better than newsletters.
           </p>
         </div>
 
