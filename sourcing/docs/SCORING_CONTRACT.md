@@ -35,6 +35,19 @@ Answer each with PASS / FAIL / UNKNOWN and one line of evidence.
 | G6 | **Is infrastructure for institutional digital finance** — identity & permissioning, wallets & key management, compliance & trust, data/oracles/middleware, settlement, tokenisation rails. | Consumer app, a token/protocol/DAO, a fund, VC, media outlet, regulator, conference, standards body, or a non-fintech business. |
 | G7 | **Independent, live operating company.** | Acquired, shut down, dormant, or a wholly-owned JV/subsidiary of an incumbent. |
 
+### A gate never PASSes on absence of evidence
+
+"No funding amount is disclosed, therefore it is below the ceiling" is not a
+pass — it is an **UNKNOWN**. Undisclosed is not the same as small, and a company
+backed by, say, Deutsche Börse and Commerzbank may be very well capitalised
+while disclosing nothing. The same applies to every gate: silence is not
+evidence of compliance.
+
+Record `UNKNOWN` with a one-line note on what you could not establish and where
+you looked. The company can still be scored — the decision rule below allows up
+to two UNKNOWNs — but it carries the caveat into the shortlist rather than
+laundering a gap into a pass.
+
 **Decision rule**
 - Any gate **FAIL** → verdict `INELIGIBLE`. Stop. Do not produce a fit score.
   Report which gate failed and why. This is a *success*, not a gap — the whole
