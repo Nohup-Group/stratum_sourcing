@@ -40,6 +40,7 @@ export default function CompanyPage() {
   if (!company) return <div className="loading">Loading company…</div>;
 
   const scan = company.latest_scan;
+  const p = company.profile;
 
   // Fixed axis order so two companies can be compared by shape, and so a
   // category with nothing resolved reads as a gap rather than a zero.
@@ -77,18 +78,98 @@ export default function CompanyPage() {
         ) : null}
       </div>
       <p className="page-sub">
-        {company.canonical_url ? (
+        {p?.website || company.canonical_url ? (
           <a
             className="evidence-link"
-            href={company.canonical_url}
+            href={p?.website || company.canonical_url || "#"}
             target="_blank"
             rel="noreferrer"
           >
-            {company.canonical_url}
+            {(p?.website || company.canonical_url || "").replace(/^https?:\/\//, "")}
           </a>
         ) : null}
         {company.description ? <> — {company.description}</> : null}
       </p>
+
+      {p ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="section-title">Company</div>
+          <div className="factgrid">
+            {[
+              ["Headquarters", [p.hq_city, p.hq_country].filter(Boolean).join(", ")],
+              ["Founded", p.founded_year],
+              ["Stage", p.stage],
+              ["Total raised", p.total_raised],
+              ["Cheque fit", p.cheque_fit],
+              ["Sells to", p.sells_to],
+              ["Registry no.", p.registry_id],
+            ]
+              .filter(([, v]) => v)
+              .map(([label, value]) => (
+                <div key={String(label)}>
+                  <div className="fact-label">{label}</div>
+                  <div className="fact-value">{String(value)}</div>
+                </div>
+              ))}
+          </div>
+
+          {p.licences.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="fact-label">Licences &amp; authorisations</div>
+              <div className="flex" style={{ gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                {p.licences.map((l) => (
+                  <span key={l} className="pill high">{l}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {p.founders.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="fact-label">Founders</div>
+              <ul className="plainlist">
+                {p.founders.map((f, i) => (
+                  <li key={`${f.name}-${i}`}>
+                    <strong>{f.name}</strong>
+                    {f.prior ? <span className="muted"> — {f.prior}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {p.investors.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="fact-label">Investors</div>
+              <div className="small">{p.investors.join(" · ")}</div>
+            </div>
+          ) : null}
+
+          {p.found_via?.source_name ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="fact-label">How we found them</div>
+              <div className="small">
+                {p.found_via.source_url ? (
+                  <a className="evidence-link" href={p.found_via.source_url} target="_blank" rel="noreferrer">
+                    {p.found_via.source_name}
+                  </a>
+                ) : (
+                  p.found_via.source_name
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {p.research_gaps.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <div className="fact-label">Check before the call</div>
+              <ul className="plainlist small muted">
+                {p.research_gaps.map((g, i) => <li key={i}>{g}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid cols-2">
         <div className="card">

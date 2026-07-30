@@ -57,7 +57,28 @@ export interface SignalResultRow {
   points_possible: number;
 }
 
+export interface CompanyProfile {
+  website: string | null;
+  registry_id: string | null;
+  hq_city: string | null;
+  hq_country: string | null;
+  founded_year: number | null;
+  stage: string | null;
+  total_raised: string | null;
+  cheque_fit: string | null;
+  sells_to: string | null;
+  licences: string[];
+  founders: { name?: string; prior?: string; url?: string }[];
+  investors: string[];
+  found_via: { source_name?: string; source_url?: string; source_category?: string };
+  anti_signals: string[];
+  research_gaps: string[];
+  recommendation: string | null;
+  coverage: number | null;
+}
+
 export interface CompanyDetail extends Omit<CompanySummary, "triage_score" | "latest_scan"> {
+  profile?: CompanyProfile;
   metadata: Record<string, unknown>;
   heuristic: { score: number; components: Record<string, number>; last_scored_at: string } | null;
   research_summary: string | null;

@@ -511,8 +511,32 @@ async def company_detail(
         .all()
     )
 
+    # Everything the discovery + scoring passes established about the company,
+    # surfaced as a first-class profile rather than buried in raw metadata.
+    st = (entity.metadata_ or {}).get("stratum3") or {}
+    profile = {
+        "website": entity.domain and f"https://{entity.domain}",
+        "registry_id": st.get("registry_id"),
+        "hq_city": st.get("hq_city"),
+        "hq_country": st.get("hq_country"),
+        "founded_year": st.get("founded_year"),
+        "stage": st.get("stage"),
+        "total_raised": st.get("total_raised"),
+        "cheque_fit": st.get("cheque_fit"),
+        "sells_to": st.get("sells_to"),
+        "licences": st.get("licences") or [],
+        "founders": st.get("founders") or [],
+        "investors": st.get("investors") or [],
+        "found_via": st.get("found_via") or {},
+        "anti_signals": st.get("anti_signals") or [],
+        "research_gaps": st.get("research_gaps") or [],
+        "recommendation": st.get("recommendation"),
+        "coverage": st.get("coverage"),
+    }
+
     return {
         **_entity_summary(entity),
+        "profile": profile,
         "metadata": entity.metadata_ or {},
         "heuristic": (
             {
