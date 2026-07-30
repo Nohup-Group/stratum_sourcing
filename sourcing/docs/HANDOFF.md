@@ -94,16 +94,24 @@ coverage metric exists to expose.
 ## 5. Demo guidance
 
 **Lead with the funnel, not the count.** *2,796 names in → 1,295 companies →
-83 through the gate → ~20 worth meeting* demonstrates judgment. The Anthropic
-before/after is the proof it works.
+83+ through the gate → 24 worth meeting* demonstrates judgment. The Anthropic
+before/after is the proof it works, and the calibration story — the system
+caught its own grader running +0.25 high and rebuilt the list — is a second
+proof that it self-corrects.
 
-**Best worked example: Axiology** (Vilnius). I verified its licence myself
-against primary sources, not company copy: `UAB Axiology DLT` appears on the
+**Best worked examples: Finologee (Luxembourg) or Evrotrust (Sofia).** Both
+resolved **every** assessed signal — coverage 1.00, zero unknowns — which is the
+strongest evidence base in the pipeline. Fipto and Enable Banking are equally
+clean.
+
+*Do not lead with Axiology*, despite what an earlier draft of this document
+said. Its licence is real and I verified it myself against primary sources —
+`UAB Axiology DLT` is on the
 [Bank of Lithuania register](https://www.lb.lt/en/sfi-financial-market-participants//uab-axiology-dlt)
-with a DLT TSS permission under Reg (EU) 2022/858 valid from **9 July 2025**,
-and on ESMA's authorised DLT market infrastructures list. Its radar shows full
-marks on regulatory and investor signals and a visible gap on commercial
-traction — which matches the write-up. That honesty is the selling point.
+with a DLT TSS permission under Reg (EU) 2022/858 valid from 9 July 2025, and on
+ESMA's authorised DLT market infrastructures list. But its 0.74 score came from
+the generous grader; on the codex standard it is **0.48, weak**, and off the
+meet list. It remains a good register-verification story, just not a top pick.
 
 **Be careful with 360X AG** (currently top at 0.89). It is genuinely on-thesis,
 but its capital gate passed on *"no amount disclosed, therefore below the
@@ -122,10 +130,13 @@ already raised past the ceiling.
    (~€23m), Gradient Labs (~€25m) and Tatum re-qualified. Notabene did not — it
    also fails on stage (Series B) and geography (Brooklyn entity).
 2. **Claude vs codex as grader** — see §4.
-3. **100 meets.** Not reachable at the current bar. Meet rate is **13.4% for
-   high-confidence candidates and 5.9% for medium**, and the high-confidence
-   ones were scored first. 100 meets needs ~650 scored companies. Either let
-   the machinery run through tomorrow, or demo the real number.
+3. **100 meets.** Not reachable at the current bar. On the codex standard the
+   meet rate is **6.8%**, so 100 meets needs roughly **1,475 scored companies**
+   against 605 discovered — days of running, not hours. (An earlier draft said
+   ~650; that was computed on the inflated grader before the calibration work.)
+   Either let the machinery keep running, or demo the real number. Loosening the
+   gate or the bands to reach 100 would hollow out the exact thing the demo
+   sells.
 
 ## 7. Operating the machinery
 
