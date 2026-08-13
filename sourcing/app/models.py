@@ -415,7 +415,7 @@ class EntityMention(Base):
     evidence_id: Mapped[int | None] = mapped_column(ForeignKey("evidence.id"))
     source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id"))
     mention_text: Mapped[str] = mapped_column(String(255), nullable=False)
-    role_hint: Mapped[str | None] = mapped_column(String(80))
+    role_hint: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
     context_excerpt: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict] = mapped_column(

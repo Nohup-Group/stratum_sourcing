@@ -724,17 +724,27 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
     async with async_session_factory() as db:
         dispatched = await dispatch_outbox_events(db, limit=limit)
         jobs = await claim_pending_jobs(db, limit=limit, lease_owner=lease_owner)
+        # The leases must be durable before any job runs. A job that poisons
+        # its transaction is rolled back below, and an uncommitted claim would
+        # roll back with it — attempts would never advance and the job would
+        # be retried forever instead of dead-lettering.
+        await db.commit()
         processed = 0
         failed = 0
 
-        for job in jobs:
+        for job_id in [job.id for job in jobs]:
+            # Reloaded per iteration, and its fields held as plain values: the
+            # rollback below expires every object in the session, and a stale
+            # one cannot be read back without IO the failure path cannot do.
+            job = await db.get(AgentJob, job_id)
+            job_type, attempt = job.job_type, job.attempts
             logger.info(
                 "agent_job_start",
-                job_id=job.id,
-                job_type=job.job_type,
+                job_id=job_id,
+                job_type=job_type,
                 source_id=job.source_id,
                 entity_id=job.entity_id,
-                attempt=job.attempts,
+                attempt=attempt,
             )
             try:
                 result = await process_agent_job(db, job)
@@ -745,8 +755,13 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
                 processed += 1
                 logger.info("agent_job_done", job_id=job.id, job_type=job.job_type, result=result)
             except Exception as error:
-                logger.exception("agent_job_failed", job_id=job.id, job_type=job.job_type)
-                await mark_job_failed(db, job, error=str(error), retry=job.attempts < 4)
+                # A failed DB write leaves the session unusable. Without this
+                # rollback the handler itself raises and takes the whole cycle
+                # — and the container — down with it.
+                await db.rollback()
+                logger.exception("agent_job_failed", job_id=job_id, job_type=job_type)
+                job = await db.get(AgentJob, job_id)
+                await mark_job_failed(db, job, error=str(error), retry=attempt < 4)
                 failed += 1
             # Durable per job: slow jobs (signal scans do minutes of research)
             # must not lose the whole cycle's work to one restart.
