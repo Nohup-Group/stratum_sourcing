@@ -19,11 +19,24 @@ duplicate.
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 
 import psycopg
 
-DSN = "postgresql://postgres:tiUIjkivXjqdtVCTtaaQyAwXIchMujFt@switchback.proxy.rlwy.net:16120/railway"
+def _dsn() -> str:
+    """Connection string from the environment; never baked into the file.
+
+    DATABASE_URL is the app's SQLAlchemy URL (postgresql+asyncpg://...), which
+    psycopg cannot parse, so the driver marker is stripped.
+    """
+    url = os.environ.get("SOURCING_DSN") or os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit(
+            "set SOURCING_DSN or DATABASE_URL to the target database before running this"
+        )
+    return url.replace("+asyncpg", "")
 PROVENANCE = "stratum3-manual-scan-2026-07-30"
 
 # Every table that references entities.id, so a delete cannot orphan a row.
@@ -47,7 +60,7 @@ def main() -> None:
     if not (args.commit or args.dry_run):
         ap.error("pass --dry-run or --commit")
 
-    conn = psycopg.connect(DSN)
+    conn = psycopg.connect(_dsn())
     cur = conn.cursor()
 
     cur.execute(

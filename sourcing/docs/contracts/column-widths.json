@@ -1,0 +1,1474 @@
+{
+  "contract": "column-widths",
+  "version": 1,
+  "corpus_commit": "c55b509cf68e640ba1b92548977c90f60e94ca0b",
+  "policy": "For every entities/entity_mentions/findings/sources/signal_* String(n) column, a test must fail if any writer whose value_origin is llm, external_api, scraped_html, rss, or user_input writes an un-truncated/un-validated value into it (decision must_widen or must_truncate below), and must also fail if any internally-derived literal string the code can assign to a column is itself longer than that column's declared width (see signal_results.result).",
+  "shape_notes": [
+    "Added two coverage sub-fields not in the original shape: files_grep_checked (files searched for writers by grep but not opened in full) and files_not_examined (files in the corpus not inspected at all). Pure string_columns_total/columns_with_writers_traced/columns_unreached/files_read counters cannot show partial-confidence coverage, and this corpus has real writers living in scripts/ that a grep-only pass over app/ would miss entirely (see entities.domain, entities.registry_id, signal_results.result).",
+    "The target shape's example row is entity_mentions.role_hint, a column that is no longer String(n) (migration 007 widened it to Text). Kept it as columns[0] for continuity with the motivating bug, but it is excluded from coverage.string_columns_total (37, not 38) since the instruction was to enumerate String(n) columns and this one no longer is. Its 'decision' field is filled as ok_bounded ('unbounded now, so the failure mode cannot recur') for schema consistency only -- the 5-value decision enum has no clean label for 'already fixed, no longer in scope'; this is the same shape gap called out for signal_results.result below.",
+    "signal_results.result (see below) does not fit the given decision taxonomy cleanly: the offending value is not externally sourced, it is a hardcoded internal string literal ('not_applicable', 14 chars) that is longer than its own column (String(12)). must_widen was chosen because truncating a fixed enum-like literal would corrupt it rather than lose 'meaning' in the prose sense the rule describes, but the taxonomy's llm/external framing does not anticipate a column that is too narrow for its own code."
+  ],
+  "coverage": {
+    "string_columns_total": 37,
+    "columns_with_writers_traced": 36,
+    "columns_unreached": 1,
+    "columns_unreached_list": ["evidence.content_type"],
+    "files_read": [
+      "app/models.py",
+      "app/schemas.py",
+      "app/services/ops_client.py",
+      "app/services/agent_pipeline.py",
+      "app/services/source_pipeline.py",
+      "app/services/signal_engine.py",
+      "app/services/notion_control.py",
+      "app/services/job_queue.py",
+      "app/pipeline/orchestrator.py",
+      "app/pipeline/analyzer.py",
+      "app/pipeline/scorer.py",
+      "app/sources/base.py",
+      "app/api/routes.py",
+      "app/api/deps.py",
+      "app/api/console.py",
+      "app/main.py",
+      "app/integrations/slack_bot.py",
+      "app/integrations/notion_sync.py",
+      "app/tasks/nightly_scan.py",
+      "app/tasks/agent_jobs.py",
+      "app/tasks/cadence_scan.py",
+      "app/tasks/morning_digest.py",
+      "app/tasks/notion_export.py",
+      "app/tasks/notion_control_plane.py",
+      "alembic/versions/001_initial_schema.py",
+      "alembic/versions/002_widen_scan_run_status.py",
+      "alembic/versions/003_placeholder.py",
+      "alembic/versions/004_control_plane_foundation.py",
+      "alembic/versions/005_signal_engine.py",
+      "alembic/versions/006_entity_typing_and_gate.py",
+      "alembic/versions/007_widen_role_hint.py",
+      "scripts/seed_signals.py",
+      "scripts/import_scan_data.py",
+      "scripts/seed_demo_fixtures.py",
+      "scripts/sourcing_run/import_to_db.py",
+      "seeds/signal_library.json"
+    ],
+    "files_grep_checked": [
+      "app/pipeline/deduplicator.py",
+      "app/pipeline/differ.py",
+      "app/pipeline/prefilter.py",
+      "app/pipeline/tracker.py",
+      "app/sources/browser_fetcher.py",
+      "app/sources/registry.py",
+      "app/sources/rss_fetcher.py",
+      "app/sources/url_unwrap.py",
+      "app/sources/web_fetcher.py",
+      "app/config.py",
+      "scripts/sourcing_run/merge_duplicate_entities.py",
+      "scripts/sourcing_run/reclassify_entities.py",
+      "scripts/sourcing_run/apply_reclassification.py",
+      "scripts/sourcing_run/rollback_import.py"
+    ],
+    "files_not_examined": [
+      "app/database.py",
+      "app/integrations/llm.py",
+      "alembic/env.py",
+      "scripts/sourcing_run/build_shortlist.py",
+      "scripts/sourcing_run/launch_scoring_codex.py",
+      "scripts/sourcing_run/merge_candidates.py",
+      "scripts/sourcing_run/score_math.py",
+      "scripts/sourcing_run/triage.py",
+      "tests/conftest.py",
+      "tests/test_agent_job_cycle.py",
+      "tests/test_signal_scoring.py",
+      "src/server.js"
+    ],
+    "note": "64 .py files exist under app/, scripts/, alembic/ (excluding __pycache__). 35 were fully read, 14 grep-checked for model writes and confirmed clean (no ORM constructor / setattr / raw SQL touching mapped models), 12 not examined (tests, unrelated tooling, one JS shim, alembic/env.py boilerplate, database.py session plumbing, and llm.py which only wraps the model API call already traced via ops_client.call_llm)."
+  },
+  "columns": [
+    {
+      "id": "entity_mentions.role_hint",
+      "table": "entity_mentions",
+      "column": "role_hint",
+      "model_file": "app/models.py",
+      "model_line": 418,
+      "declared_type": "Text",
+      "width": null,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 344,
+          "excerpt": "role_hint=raw.get(\"role_hint\") or None,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "llm",
+      "decision": "ok_bounded",
+      "rationale": "The MOTIVATING BUG. Was String(80); a 101-char and then a 123-char LLM-written role hint on consecutive nights caused asyncpg.StringDataRightTruncationError and killed the cron cycle (see alembic/versions/007_widen_role_hint.py:1-16, which documents both incidents). Migration 007 (alembic/versions/007_widen_role_hint.py:24-30) widened it to Text, so it no longer has a width and this class of failure cannot recur here. Kept in the contract as the reference case; see shape_notes for why 'decision' is a forced fit for an already-fixed column."
+    },
+    {
+      "id": "sources.name",
+      "table": "sources",
+      "column": "name",
+      "model_file": "app/models.py",
+      "model_line": 97,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/api/routes.py",
+          "line": 68,
+          "excerpt": "db_source = Source(**source.model_dump())",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/schemas.py",
+          "line": 11,
+          "excerpt": "name: str",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 191,
+          "excerpt": "name=entity.display_name,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 436,
+          "excerpt": "\"name\": _extract_prop_text(page, \"Name\") or _get_page_title(page),",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 455,
+          "excerpt": "source = Source(**notion_source)",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 437,
+          "excerpt": "sname[:255],",
+          "value_origin": "external_api",
+          "truncated_at_write": true,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "POST /api/sources is not behind verify_cron_secret or the console password (app/api/routes.py:63-67 has no auth dependency; only /tasks/* and /admin/* use verify_cron_secret per app/api/deps.py:17). SourceCreate.name (app/schemas.py:11) is a bare `str` with no Field(max_length=...), so an unauthenticated caller can insert a name of any length and hit the exact StringDataRightTruncationError class as the motivating bug. Separately, app/services/source_pipeline.py:191 feeds an un-truncated LLM-derived entity.display_name straight into Source.name when a self-grown source is created. The Notion reconcile path (app/services/notion_control.py:436,455) takes a page title verbatim from Notion's API with no length check either. Contrast: scripts/sourcing_run/import_to_db.py:437 truncates the same kind of value (`sname[:255]`) before insert, showing the codebase already knows the right fix for this exact field elsewhere."
+    },
+    {
+      "id": "sources.notion_page_id",
+      "table": "sources",
+      "column": "notion_page_id",
+      "model_file": "app/models.py",
+      "model_line": 116,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/notion_control.py",
+          "line": 488,
+          "excerpt": "source.notion_page_id = page[\"id\"]",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 444,
+          "excerpt": "\"notion_page_id\": page_id,",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "ok_bounded",
+      "rationale": "page_id / page[\"id\"] is Notion's own object id, always a UUID (36 chars incl. dashes) returned by the Notion REST API (app/services/notion_control.py:218-219, 255-262). Notion does not let a caller choose this id, so the value's format is bounded by Notion's own ID scheme, not by app-level validation. No truncation exists in code but none is needed at 36 <= 64."
+    },
+    {
+      "id": "sources.discovery_mode",
+      "table": "sources",
+      "column": "discovery_mode",
+      "model_file": "app/models.py",
+      "model_line": 117,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/api/routes.py",
+          "line": 68,
+          "excerpt": "db_source = Source(**source.model_dump())",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/schemas.py",
+          "line": 21,
+          "excerpt": "discovery_mode: str = \"manual\"",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 200,
+          "excerpt": "discovery_mode=\"self-grown\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 443,
+          "excerpt": "\"discovery_mode\": (_extract_prop_text(page, \"Discovery Mode\") or \"manual\").lower(),",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "Same unauthenticated POST /api/sources path as sources.name, plus a Notion 'select' property (app/services/notion_control.py:124-126) whose options are only a UI suggestion -- Notion lets a user add a new option with arbitrary text at edit time, which _extract_prop_text (app/services/notion_control.py:66-80) returns verbatim. Neither path validates against the two intended values (manual, self-grown) or the column width."
+    },
+    {
+      "id": "sources.cadence_bucket",
+      "table": "sources",
+      "column": "cadence_bucket",
+      "model_file": "app/models.py",
+      "model_line": 121,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/api/routes.py",
+          "line": 68,
+          "excerpt": "db_source = Source(**source.model_dump())",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/schemas.py",
+          "line": 20,
+          "excerpt": "cadence_bucket: str = \"daily\"",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 106,
+          "excerpt": "source.cadence_bucket = classification.get(\"cadence_bucket\") or infer_cadence_bucket(",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 442,
+          "excerpt": "\"cadence_bucket\": _extract_prop_text(page, \"Cadence Bucket\") or \"daily\",",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "app/services/source_pipeline.py:83-89 asks an LLM (run_ops_json_prompt, agent='source-onboarder') to return a 'cadence_bucket' key and writes classification.get('cadence_bucket') straight through on line 106 with no membership check against the four allowed values (hourly, every_6_hours, daily, weekly listed in the prompt at source_pipeline.py:72) -- an off-script LLM answer is not truncated or rejected. The unauthenticated API and Notion select paths carry the same risk as sources.discovery_mode."
+    },
+    {
+      "id": "sources.onboarding_status",
+      "table": "sources",
+      "column": "onboarding_status",
+      "model_file": "app/models.py",
+      "model_line": 126,
+      "declared_type": "String",
+      "width": 30,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/api/routes.py",
+          "line": 68,
+          "excerpt": "db_source = Source(**source.model_dump())",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/schemas.py",
+          "line": 22,
+          "excerpt": "onboarding_status: str = \"new\"",
+          "value_origin": "user_input",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 110,
+          "excerpt": "source.onboarding_status = \"bootstrap_pending\" if source.is_active else \"paused\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/pipeline/orchestrator.py",
+          "line": 191,
+          "excerpt": "source_row.onboarding_status = \"error\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 445,
+          "excerpt": "\"onboarding_status\": backfill_status,",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "Longest known internal literal is 'bootstrap_pending' (18 chars, fits 30 comfortably), so the internal writers are safe today. The risk is the same unauthenticated POST /api/sources path (no max_length on app/schemas.py:22) and the Notion 'Initial Backfill Status' select field (app/services/notion_control.py:434,445), both unbounded."
+    },
+    {
+      "id": "sources.auto_growth_state",
+      "table": "sources",
+      "column": "auto_growth_state",
+      "model_file": "app/models.py",
+      "model_line": 132,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 204,
+          "excerpt": "auto_growth_state=\"candidate\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Not a field on SourceBase/SourceCreate (app/schemas.py:10-23 has no auto_growth_state key), so `Source(**source.model_dump())` in app/api/routes.py:68 cannot set it -- unlike the other four sources.* string columns, the unauthenticated API route has no path to this column. Only writer found is the 9-char literal 'candidate'; default is 'manual' (app/models.py:132-134)."
+    },
+    {
+      "id": "scan_runs.status",
+      "table": "scan_runs",
+      "column": "status",
+      "model_file": "app/models.py",
+      "model_line": 170,
+      "declared_type": "String",
+      "width": 30,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/pipeline/orchestrator.py",
+          "line": 117,
+          "excerpt": "run.status = \"completed_with_errors\" if errors else \"completed\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/import_scan_data.py",
+          "line": 38,
+          "excerpt": "status=\"imported\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Only ever set to one of a small fixed set of code literals; longest is 'completed_with_errors' at 22 chars, which fits the current width of 30. alembic/versions/002_widen_scan_run_status.py:1-22 shows this column was already widened once (20 -> 30) for exactly this reason, so 30 is a deliberately-chosen bound, not an accident."
+    },
+    {
+      "id": "snapshots.content_hash",
+      "table": "snapshots",
+      "column": "content_hash",
+      "model_file": "app/models.py",
+      "model_line": 190,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/pipeline/orchestrator.py",
+          "line": 176,
+          "excerpt": "content_hash=result.content_hash or \"\",",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/sources/base.py",
+          "line": 21,
+          "excerpt": "return sha256(content.encode(\"utf-8\")).hexdigest()",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "hashlib.sha256(...).hexdigest() always returns exactly 64 hex characters (app/sources/base.py:19-21), or the fetcher returns an empty string on error (app/sources/base.py:41-49). Both cases fit String(64) exactly."
+    },
+    {
+      "id": "findings.category",
+      "table": "findings",
+      "column": "category",
+      "model_file": "app/models.py",
+      "model_line": 218,
+      "declared_type": "String",
+      "width": 50,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/pipeline/orchestrator.py",
+          "line": 303,
+          "excerpt": "category=scored.get(\"category\"),",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/pipeline/scorer.py",
+          "line": 167,
+          "excerpt": "**raw_finding,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/pipeline/analyzer.py",
+          "line": 30,
+          "excerpt": "category: str = \"opinion\"",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/import_scan_data.py",
+          "line": 59,
+          "excerpt": "category=f.get(\"category\"),",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "llm",
+      "decision": "must_truncate",
+      "rationale": "RawFinding.category (app/pipeline/analyzer.py:27-30) is a bare Pydantic `str` with no max_length and no Literal[...] constraint, even though the system prompt tells the LLM to pick one of 8 short tokens (app/pipeline/analyzer.py:64: 'category: funding_round, product_launch, partnership, regulatory, hiring, research, market_move, opinion'). app/pipeline/scorer.py:166-171 spreads raw_finding unchanged (`**raw_finding`), and app/pipeline/orchestrator.py:303 writes it straight into the column. Nothing in the chain enforces the 8-value vocabulary or a length bound; a model that answers with a longer descriptive string instead of one of the 8 tokens overflows the column exactly like the motivating bug. Unlike role_hint this is meant to be a short controlled token, so truncating is the semantically-correct fix (validating against FINDING_CATEGORIES, which exists in app/models.py:52-61 but is never enforced at the DB or Pydantic layer, is a decision left to open_questions)."
+    },
+    {
+      "id": "findings.dedup_hash",
+      "table": "findings",
+      "column": "dedup_hash",
+      "model_file": "app/models.py",
+      "model_line": 231,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/pipeline/scorer.py",
+          "line": 164,
+          "excerpt": "dedup_hash = hashlib.sha256(dedup_input.encode()).hexdigest()",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "sha256(...).hexdigest() is always exactly 64 hex characters; fits String(64) exactly with no slack."
+    },
+    {
+      "id": "findings.notion_page_id",
+      "table": "findings",
+      "column": "notion_page_id",
+      "model_file": "app/models.py",
+      "model_line": 232,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/notion_control.py",
+          "line": 609,
+          "excerpt": "finding.notion_page_id = page[\"id\"]",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "ok_bounded",
+      "rationale": "Same Notion-generated UUID pattern as sources.notion_page_id and watch_targets.notion_page_id; 36 chars, not caller-controlled."
+    },
+    {
+      "id": "evidence.content_type",
+      "table": "evidence",
+      "column": "content_type",
+      "model_file": "app/models.py",
+      "model_line": 264,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "No explicit writer found anywhere in app/ or scripts/ (Evidence(...) is constructed in app/pipeline/orchestrator.py:319-325, scripts/import_scan_data.py:69-74, and scripts/seed_demo_fixtures.py:191-197, and none of the three pass content_type). Every row therefore takes the column default 'text' (app/models.py:264-266). This is the one column in the corpus with confirmed zero explicit application-level writers -- counted as columns_unreached rather than columns_with_writers_traced, since 'traced' here means only 'confirmed no writer exists' rather than 'followed a writer to its source'."
+    },
+    {
+      "id": "notifications.channel",
+      "table": "notifications",
+      "column": "channel",
+      "model_file": "app/models.py",
+      "model_line": 281,
+      "declared_type": "String",
+      "width": 30,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/integrations/slack_bot.py",
+          "line": 226,
+          "excerpt": "channel=\"slack_digest\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 614,
+          "excerpt": "channel=\"notion\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Only two call sites, both fixed short literals ('slack_digest'=12 chars, 'notion'=6 chars)."
+    },
+    {
+      "id": "integration_states.integration",
+      "table": "integration_states",
+      "column": "integration",
+      "model_file": "app/models.py",
+      "model_line": 301,
+      "declared_type": "String",
+      "width": 50,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/job_queue.py",
+          "line": 38,
+          "excerpt": ".values(integration=integration, config=config)",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/notion_control.py",
+          "line": 24,
+          "excerpt": "NOTION_CONTROL_STATE = \"notion_control_plane\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "job_queue.upsert_integration_state's `integration` parameter is only ever called with the two module-level constants NOTION_CONTROL_STATE / NOTION_WEBHOOK_STATE (app/services/notion_control.py:24-25); longest is 'notion_control_plane' at 21 chars, fits 50."
+    },
+    {
+      "id": "event_outbox.event_type",
+      "table": "event_outbox",
+      "column": "event_type",
+      "model_file": "app/models.py",
+      "model_line": 312,
+      "declared_type": "String",
+      "width": 80,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/pipeline/orchestrator.py",
+          "line": 332,
+          "excerpt": "event_type=\"snapshot_ready\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 367,
+          "excerpt": "event_type=\"entity_candidate\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 517,
+          "excerpt": "event_type=\"source_expansion_candidate\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/api/routes.py",
+          "line": 186,
+          "excerpt": "event_type=\"notion_source_registry_webhook\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "All call sites pass a fixed code literal; longest observed is 'source_expansion_candidate' / 'notion_source_registry_webhook', both well under 80 (27 and 31 chars respectively)."
+    },
+    {
+      "id": "event_outbox.status",
+      "table": "event_outbox",
+      "column": "status",
+      "model_file": "app/models.py",
+      "model_line": 313,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/job_queue.py",
+          "line": 130,
+          "excerpt": "event.status = \"processing\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/job_queue.py",
+          "line": 249,
+          "excerpt": "event.status = \"dispatched\" if created_job is not None else \"ignored\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Fixed literals only; longest is 'processing'/'dispatched' at 10 chars, well under 20."
+    },
+    {
+      "id": "event_outbox.dedup_key",
+      "table": "event_outbox",
+      "column": "dedup_key",
+      "model_file": "app/models.py",
+      "model_line": 316,
+      "declared_type": "String",
+      "width": 128,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 665,
+          "excerpt": "dedup_key=f\"watchlist_update_ready:{entity.id}:{score.last_scored_at.isoformat()}\",",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/api/routes.py",
+          "line": 188,
+          "excerpt": "dedup_key=f\"notion_webhook:{event_key}\",",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "All dedup_key writers are f-strings over a fixed prefix + integer id(s) + either a short literal or an ISO timestamp / sha256 hexdigest. Worst case observed is app/api/routes.py:183-188 ('notion_webhook:' [15 chars] + a 64-char sha256 hexdigest = 79 chars), which fits 128. No caller passes raw external text into this field."
+    },
+    {
+      "id": "entities.display_name",
+      "table": "entities",
+      "column": "display_name",
+      "model_file": "app/models.py",
+      "model_line": 348,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 206,
+          "excerpt": "display_name=name,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 216,
+          "excerpt": "entity.display_name = name",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 298,
+          "excerpt": "name = str(raw.get(\"name\") or \"\").strip()",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "llm",
+      "decision": "must_truncate",
+      "rationale": "Named explicitly in the task brief as the same shape as the motivating bug. `name` (app/services/agent_pipeline.py:298) comes from raw_entities, which is either _extract_entities_with_agent (an LLM call, agent='entity-extractor', app/services/agent_pipeline.py:159-185) or, when known entities are skipped, _heuristic_extract_entities (app/services/agent_pipeline.py:124-156), which itself pulls from finding.metadata_['entities'] -- populated from RawFinding.entities (app/pipeline/analyzer.py:35), also LLM output -- or a regex over finding.title, whose text is itself LLM-written. Every path terminates at LLM-generated text. No length check exists before either constructor call (line 206) or the update-path assignment (line 216). Unlike role_hint this is a name field (a person or company name), so per the given decision rule ('bounded width is semantically right (e.g. a name)') truncating rather than widening is the correct fix -- 255 chars is already generous for a real entity name, and the codebase truncates neighboring free-text fields in the same function (description=finding.summary[:500] on line 313, context_excerpt=finding.summary[:500] on line 346) but not this one."
+    },
+    {
+      "id": "entities.normalized_name",
+      "table": "entities",
+      "column": "normalized_name",
+      "model_file": "app/models.py",
+      "model_line": 349,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 207,
+          "excerpt": "normalized_name=normalized,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 197,
+          "excerpt": "normalized = normalize_name(name)",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 69,
+          "excerpt": "return re.sub(r\"[^a-z0-9]+\", \" \", value.lower()).strip()",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "llm",
+      "decision": "must_truncate",
+      "rationale": "normalize_name() (app/services/agent_pipeline.py:69-70) collapses runs of non-alphanumeric characters to a single space and lowercases -- it can only shorten or preserve the input length, never lengthen it. Its input is the same un-truncated LLM `name` traced under entities.display_name, so normalized_name carries an identical, un-mitigated overflow risk and the same fix applies."
+    },
+    {
+      "id": "entities.domain",
+      "table": "entities",
+      "column": "domain",
+      "model_file": "app/models.py",
+      "model_line": 354,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 156,
+          "excerpt": "domain = host_of(cand.get(\"domain\"))",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 243,
+          "excerpt": "domain=%s,",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 272,
+          "excerpt": "source_count, finding_count, domain, registry_id,",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "No writer exists anywhere in app/ (grep for '.domain' / 'domain=' under app/ only matches read sites in app/api/console.py:100,536); the column is currently only ever populated by the one-off script scripts/sourcing_run/import_to_db.py, which reads candidate.json research data written by an external discovery/scoring process and computes `host_of(url) = urlparse(...).netloc.lower()` (scripts/sourcing_run/import_to_db.py:61-65). If the source 'domain' field is not really URL-shaped (no '/','?','#' delimiter), urlparse's netloc extraction is not length-bounded, so this is not provably truncated -- see open_questions for whether this offline path is in scope at all."
+    },
+    {
+      "id": "entities.registry_id",
+      "table": "entities",
+      "column": "registry_id",
+      "model_file": "app/models.py",
+      "model_line": 355,
+      "declared_type": "String",
+      "width": 120,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 257,
+          "excerpt": "cand.get(\"registry_id\"),",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 287,
+          "excerpt": "cand.get(\"registry_id\"),",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "must_truncate",
+      "rationale": "Same situation as entities.domain: no writer anywhere in app/ (the only app/ reference is a read of a DIFFERENT value at app/api/console.py:537, which pulls 'registry_id' out of entity.metadata_['stratum3'], not this column). The only writer is scripts/sourcing_run/import_to_db.py, which inserts cand.get('registry_id') from external research data with no length check on either the UPDATE (line 237-264) or INSERT (line 267-296) path."
+    },
+    {
+      "id": "entity_mentions.mention_text",
+      "table": "entity_mentions",
+      "column": "mention_text",
+      "model_file": "app/models.py",
+      "model_line": 417,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 343,
+          "excerpt": "mention_text=name,",
+          "value_origin": "llm",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "llm",
+      "decision": "must_truncate",
+      "rationale": "Named explicitly in the task brief. Same un-truncated `name` (app/services/agent_pipeline.py:298) as entities.display_name/normalized_name, written into the EntityMention constructor at app/services/agent_pipeline.py:339-347 with no slice. Same reasoning as display_name: a name field, so truncate rather than widen."
+    },
+    {
+      "id": "agent_jobs.job_type",
+      "table": "agent_jobs",
+      "column": "job_type",
+      "model_file": "app/models.py",
+      "model_line": 443,
+      "declared_type": "String",
+      "width": 80,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/job_queue.py",
+          "line": 199,
+          "excerpt": "job_type=\"entity_extractor\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 603,
+          "excerpt": "job_type=\"signal_scan\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/source_pipeline.py",
+          "line": 210,
+          "excerpt": "job_type=\"source_onboarder\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Fixed set of job type literals (entity_extractor, company_researcher, people_researcher, entity_scorer, source_expander, source_onboarder, signal_scan); longest is 'company_researcher' at 18 chars, well under 80. Also checked in app/services/agent_pipeline.py:706-720 as an equality dispatch against the same literal set."
+    },
+    {
+      "id": "agent_jobs.status",
+      "table": "agent_jobs",
+      "column": "status",
+      "model_file": "app/models.py",
+      "model_line": 444,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 752,
+          "excerpt": "job.status = \"completed\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/job_queue.py",
+          "line": 164,
+          "excerpt": "job.status = \"running\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/job_queue.py",
+          "line": 181,
+          "excerpt": "job.status = \"retry\" if retry else \"failed\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Fixed literals only; longest is 'completed'/'running' at 9/7 chars, well under 20."
+    },
+    {
+      "id": "agent_jobs.external_ref",
+      "table": "agent_jobs",
+      "column": "external_ref",
+      "model_file": "app/models.py",
+      "model_line": 447,
+      "declared_type": "String",
+      "width": 128,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 597,
+          "excerpt": "external_ref = f\"signal_scan:{entity_id}:{month_bucket}\"",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 599,
+          "excerpt": "external_ref = f\"signal_scan:{entity_id}:{utc_now().isoformat()}\"",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/api/routes.py",
+          "line": 75,
+          "excerpt": "external_ref=f\"source:{db_source.id}:onboard\",",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "All f-strings built from a short literal prefix, an integer id, and either a 6-char month bucket or an ISO timestamp. Worst case ('signal_scan:' [12] + id [up to ~10 digits] + ':' + isoformat [~32]) is well under 128."
+    },
+    {
+      "id": "agent_jobs.lease_owner",
+      "table": "agent_jobs",
+      "column": "lease_owner",
+      "model_file": "app/models.py",
+      "model_line": 459,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 723,
+          "excerpt": "async def run_agent_job_cycle(limit: int = 25, lease_owner: str = \"agent-worker\") -> dict:",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/job_queue.py",
+          "line": 166,
+          "excerpt": "job.lease_owner = lease_owner",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Only value ever passed is the 12-char default 'agent-worker'; no caller overrides it with external input."
+    },
+    {
+      "id": "signals.category",
+      "table": "signals",
+      "column": "category",
+      "model_file": "app/models.py",
+      "model_line": 553,
+      "declared_type": "String",
+      "width": 60,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 122,
+          "excerpt": "category = row[\"category\"].strip()",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 137,
+          "excerpt": "\"category\": category,",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/seed_signals.py",
+          "line": 20,
+          "excerpt": "library = json.loads(LIBRARY_PATH.read_text())",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": 23,
+      "reachable_from": "internal",
+      "decision": "ok_bounded",
+      "rationale": "`row` comes from seeds/signal_library.json, a static file checked into the repo (200 entries), loaded only by scripts/seed_signals.py:16-22 -- not runtime LLM or user input. Measured every 'category' value in that file directly (python: max(len(r['category']) for r in json.load(...))) = 23 chars, well under 60. Not queried from a live database; this is a corpus-file measurement, not a DB one, so it is reported here rather than in max_observed_len's DB-measurement slot per the task's strict definition -- see shape_notes."
+    },
+    {
+      "id": "signals.subcategory",
+      "table": "signals",
+      "column": "subcategory",
+      "model_file": "app/models.py",
+      "model_line": 554,
+      "declared_type": "String",
+      "width": 60,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 138,
+          "excerpt": "\"subcategory\": (row.get(\"subcategory\") or \"\").strip() or None,",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": 20,
+      "reachable_from": "internal",
+      "decision": "ok_bounded",
+      "rationale": "Same seeds/signal_library.json source as signals.category. Measured max subcategory length in the file = 20 chars, well under 60."
+    },
+    {
+      "id": "signals.name",
+      "table": "signals",
+      "column": "name",
+      "model_file": "app/models.py",
+      "model_line": 555,
+      "declared_type": "String",
+      "width": 255,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 139,
+          "excerpt": "\"name\": row[\"name\"].strip(),",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": 70,
+      "reachable_from": "internal",
+      "decision": "ok_bounded",
+      "rationale": "Same seeds/signal_library.json source. Measured max name length in the file = 70 chars, well under 255."
+    },
+    {
+      "id": "signals.strength",
+      "table": "signals",
+      "column": "strength",
+      "model_file": "app/models.py",
+      "model_line": 559,
+      "declared_type": "String",
+      "width": 10,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 123,
+          "excerpt": "strength = (row.get(\"strength\") or \"high\").strip().lower()",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 125,
+          "excerpt": "strength = \"medium\"",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "app/services/signal_engine.py:124-125 forces strength to 'medium' whenever the seed file's value is not already a key of STRENGTH_POINTS ({'high','medium'}, app/services/signal_engine.py:48), so the written value is always exactly 'high' or 'medium' regardless of the seed file's raw text -- 6 chars max, fits 10."
+    },
+    {
+      "id": "signal_scans.status",
+      "table": "signal_scans",
+      "column": "status",
+      "model_file": "app/models.py",
+      "model_line": 589,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 414,
+          "excerpt": "scan.status = \"running\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 459,
+          "excerpt": "scan.status = \"failed\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 497,
+          "excerpt": "scan.status = \"completed\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Fixed literals only; longest is 'completed'/'running' at 9/7 chars, well under 20."
+    },
+    {
+      "id": "signal_scans.scan_depth",
+      "table": "signal_scans",
+      "column": "scan_depth",
+      "model_file": "app/models.py",
+      "model_line": 590,
+      "declared_type": "String",
+      "width": 10,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 408,
+          "excerpt": "scan_depth=scan_depth,",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 392,
+          "excerpt": "scan_depth = payload.get(\"scan_depth\") or \"standard\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/api/console.py",
+          "line": 605,
+          "excerpt": "if body.scan_depth not in (\"standard\", \"full\"):",
+          "value_origin": "user_input",
+          "truncated_at_write": true,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "The only externally-reachable entry point, POST /api/console/companies/{id}/scan, validates body.scan_depth against exactly ('standard','full') and raises HTTP 422 otherwise (app/api/console.py:605-606) before it ever reaches enqueue_signal_scan / the AgentJob payload / signal_engine.py:392,408. The other caller, app/services/agent_pipeline.py:677, never passes scan_depth (defaults to 'standard'). Both possible values fit String(10) (8 and 4 chars)."
+    },
+    {
+      "id": "signal_scans.trigger",
+      "table": "signal_scans",
+      "column": "trigger",
+      "model_file": "app/models.py",
+      "model_line": 593,
+      "declared_type": "String",
+      "width": 30,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 409,
+          "excerpt": "trigger=trigger,",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/api/console.py",
+          "line": 612,
+          "excerpt": "trigger=\"manual\",",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 677,
+          "excerpt": "await enqueue_signal_scan(db, entity_id=entity.id, trigger=\"auto\")",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Only two values are ever passed by any caller: 'manual' and 'auto', both far under 30 chars."
+    },
+    {
+      "id": "signal_scans.band",
+      "table": "signal_scans",
+      "column": "band",
+      "model_file": "app/models.py",
+      "model_line": 597,
+      "declared_type": "String",
+      "width": 30,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 502,
+          "excerpt": "scan.band = scoring[\"band\"]",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 100,
+          "excerpt": "return \"insufficient-evidence\"",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "band_for() (app/services/signal_engine.py:93-104) only ever returns one of 'insufficient-evidence' (21 chars), 'strong', 'moderate', 'weak', or 'poor'. alembic/versions/006_entity_typing_and_gate.py:83-89 explicitly widened this column from 20 to 30 with the comment '\"insufficient-evidence\" is 21 characters and the column was varchar(20)' -- 30 is a deliberately-chosen bound that already accounts for the longest literal."
+    },
+    {
+      "id": "signal_results.result",
+      "table": "signal_results",
+      "column": "result",
+      "model_file": "app/models.py",
+      "model_line": 639,
+      "declared_type": "String",
+      "width": 12,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 471,
+          "excerpt": "result=item[\"result\"],",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 176,
+          "excerpt": "UNSCORED_RESULTS = (\"unknown\", \"not_applicable\")",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 371,
+          "excerpt": "\"na\": \"not_applicable\",",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 131,
+          "excerpt": "VERDICT_MAP = {\"Y\": \"confirmed\", \"N\": \"absent\", \"?\": \"unknown\", \"NA\": \"not_applicable\"}",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "scripts/sourcing_run/import_to_db.py",
+          "line": 372,
+          "excerpt": "(scan_id, sig_id, verdict, (sig.get(\"url\") or \"\")[:1000] or None, (sig.get(\"evidence\") or \"\")[:1000] or None, sig_points if verdict == \"confirmed\" else 0.0),",
+          "value_origin": "internal_derived",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "must_widen",
+      "rationale": "HIGHEST-SEVERITY FINDING. \"not_applicable\" is 14 characters (n-o-t-_-a-p-p-l-i-c-a-b-l-e), but signal_results.result is String(12) (app/models.py:639) -- a valid, code-defined value for this column is itself 2 characters longer than the column can hold. This is not an external-input problem: RESULT_CREDIT/UNSCORED_RESULTS (app/services/signal_engine.py:175-177) treat 'not_applicable' as a first-class valid result, and app/services/signal_engine.py:471 writes item['result'] (which compute_scan_scoring can set to 'not_applicable' whenever an LLM batch answers '?' mapped via a caller-supplied verdict, or more directly whenever _parse_batch_results (app/services/signal_engine.py:366-386) sees an 'na'/'n/a' verdict token, app/services/signal_engine.py:371-372) with no length check. There is also a SEPARATE, already-exercised writer: scripts/sourcing_run/import_to_db.py:131,368-382 maps 'NA' -> 'not_applicable' via its own VERDICT_MAP and inserts it directly into signal_results.result via raw SQL with no truncation (line 369-373), under PROVENANCE 'stratum3-manual-scan-2026-07-30' (scripts/sourcing_run/import_to_db.py:35) -- i.e. this is not hypothetical, it is a value the codebase's own manual-import tool is known to have attempted to write to production. Truncating 'not_applicable' to 12 chars would silently corrupt a value multiple call sites compare for equality (e.g. counts['not_applicable'] downstream logic), so the column must be widened, not the value truncated -- the reverse of every other finding in this contract."
+    },
+    {
+      "id": "watch_targets.status",
+      "table": "watch_targets",
+      "column": "status",
+      "model_file": "app/models.py",
+      "model_line": 665,
+      "declared_type": "String",
+      "width": 20,
+      "nullable": false,
+      "writers": [
+        {
+          "file": "app/services/agent_pipeline.py",
+          "line": 658,
+          "excerpt": "target.status = \"active\" if score.score >= threshold else \"watch\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        },
+        {
+          "file": "app/services/signal_engine.py",
+          "line": 521,
+          "excerpt": "target.status = \"active\" if scoring[\"band\"] in (\"strong\", \"moderate\") else \"watch\"",
+          "value_origin": "internal_enum",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "internal",
+      "decision": "ok_internal",
+      "rationale": "Only 'active' (6 chars) or 'watch' (5 chars) are ever written; default is also 'active' (app/models.py:665-667)."
+    },
+    {
+      "id": "watch_targets.notion_page_id",
+      "table": "watch_targets",
+      "column": "notion_page_id",
+      "model_file": "app/models.py",
+      "model_line": 670,
+      "declared_type": "String",
+      "width": 64,
+      "nullable": true,
+      "writers": [
+        {
+          "file": "app/services/notion_control.py",
+          "line": 548,
+          "excerpt": "target.notion_page_id = page[\"id\"]",
+          "value_origin": "external_api",
+          "truncated_at_write": false,
+          "confidence": "traced"
+        }
+      ],
+      "max_observed_len": null,
+      "reachable_from": "external",
+      "decision": "ok_bounded",
+      "rationale": "Same Notion-generated UUID pattern as sources.notion_page_id and findings.notion_page_id."
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "signal_results-result-too-narrow",
+      "column": "signal_results.result",
+      "question": "signal_results.result is String(12) but the code's own fixed vocabulary includes 'not_applicable' (14 chars), which multiple writers can produce (app/services/signal_engine.py:176,371-372,471 and scripts/sourcing_run/import_to_db.py:131,368-382 -- the latter under a PROVENANCE tag showing it already ran against production once). Should the column be widened (e.g. to 20, mirroring the pattern already used for signal_scans.band per alembic/versions/006_entity_typing_and_gate.py:83-89's 'insufficient-evidence' fix), or should the code-level vocabulary use a shorter token (e.g. 'n_a' or 'na') instead?",
+      "evidence_for_widen": "alembic/versions/006_entity_typing_and_gate.py:83-89 already widened signal_scans.band from 20 to 30 for the identical reason (a literal in code was longer than the column); the same fix pattern applies directly.",
+      "evidence_for_shorter_token": "Every other value in the vocabulary (confirmed, absent, unknown) is <=9 chars; only 'not_applicable' is an outlier, so shrinking the one token is a smaller diff than widening the column, but touches every downstream string comparison against 'not_applicable' (at least app/services/signal_engine.py:176,196,202,212,222,224,230,266-267 and console.py display code)."
+    },
+    {
+      "id": "unauthenticated-source-create",
+      "column": "sources.name, sources.discovery_mode, sources.cadence_bucket, sources.onboarding_status",
+      "question": "POST /api/sources (app/api/routes.py:63-80) has no auth dependency and SourceCreate (app/schemas.py:10-27) has no Field(max_length=...) or Literal[...] constraints on any of these four string fields. Should the fix be (a) Pydantic max_length matching the DB width (prevents the crash, still allows garbage up to N chars), (b) Literal/enum validation against the actual allowed vocabularies (cadence_bucket in {hourly,every_6_hours,daily,weekly}, discovery_mode in {manual,self-grown}, onboarding_status against a defined set) -- which fixes both the crash and invalid-value risk, or (c) adding auth to the route, which is an orthogonal but adjacent gap?",
+      "evidence": "app/api/deps.py:17-22 defines verify_cron_secret and only /tasks/* and /admin/* routes use it (app/api/routes.py:216-291); /api/sources (both GET and POST) has zero Depends() auth."
+    },
+    {
+      "id": "offline-script-writer-scope",
+      "column": "entities.domain, entities.registry_id, signal_results.result (partial)",
+      "question": "scripts/sourcing_run/import_to_db.py is the ONLY writer found anywhere in the corpus for entities.domain and entities.registry_id, and is a second writer (alongside the live agent pipeline) for signal_results.result. It is a manually-invoked, --dry-run/--commit gated script, not part of the deployed Railway image's request/worker cycle, and it hardcodes a full production Postgres connection string with a plaintext password at scripts/sourcing_run/import_to_db.py:34. Should this script's writes count as in-scope 'reachable from LLM output' risk for this contract (as this analysis treated them), or should offline/manual data-ops tooling be tracked in a separate contract since it is not part of the always-running service the motivating bug (a cron cycle dying every night) describes?",
+      "evidence": "scripts/sourcing_run/import_to_db.py:1-13 docstring: 'Import discovered + scored companies and their sources into production... Usage: python3 import_to_db.py --dry-run / --commit'; DSN at line 34 points to switchback.proxy.rlwy.net, a Railway proxy host, i.e. production."
+    },
+    {
+      "id": "hardcoded-production-credential",
+      "column": null,
+      "question": "Not a column-width issue, flagged because it was found while tracing writers: scripts/sourcing_run/import_to_db.py:34 hardcodes a live production Postgres DSN including a plaintext password ('postgresql://postgres:<REDACTED>@switchback.proxy.rlwy.net:16120/railway'), committed to the repository. Out of scope for this contract's policy but severe enough to surface for a human decision on rotation/removal.",
+      "evidence": "scripts/sourcing_run/import_to_db.py:34"
+    }
+  ]
+}

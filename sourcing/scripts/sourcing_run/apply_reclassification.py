@@ -17,13 +17,26 @@ as a dozen array-parameterised UPDATEs instead of thousands of individual ones.
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 from collections import Counter, defaultdict
 
 import psycopg
 
-DSN = "postgresql://postgres:tiUIjkivXjqdtVCTtaaQyAwXIchMujFt@switchback.proxy.rlwy.net:16120/railway"
+def _dsn() -> str:
+    """Connection string from the environment; never baked into the file.
+
+    DATABASE_URL is the app's SQLAlchemy URL (postgresql+asyncpg://...), which
+    psycopg cannot parse, so the driver marker is stripped.
+    """
+    url = os.environ.get("SOURCING_DSN") or os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit(
+            "set SOURCING_DSN or DATABASE_URL to the target database before running this"
+        )
+    return url.replace("+asyncpg", "")
 
 
 def main() -> None:
@@ -35,7 +48,7 @@ def main() -> None:
         ap.error("pass --dry-run or --commit")
 
     proposals = json.load(open("reclassification.json", encoding="utf-8"))
-    conn = psycopg.connect(DSN)
+    conn = psycopg.connect(_dsn())
     cur = conn.cursor()
 
     # --- one read: current identity of every entity ---

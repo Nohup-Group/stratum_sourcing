@@ -1,0 +1,375 @@
+{
+  "contract": "deploy-hazards",
+  "version": 1,
+  "corpus_commit": "c55b509cf68e640ba1b92548977c90f60e94ca0b",
+  "corpus_note": "sourcing/ and sourcing-console/ are two directories inside ONE git repo (stratum_sourcing, root .git at /Users/erickpg/code/nohup_stratum_sourcing/stratum_sourcing). 'c55b509' is the tip of the whole monorepo, not just sourcing/. Verified: `git -C sourcing rev-parse --show-toplevel` and `git -C sourcing-console rev-parse --show-toplevel` both return the same path.",
+  "generated_by": "read-only analysis: file reads + `git log`/`git show`/`git rev-parse` + read-only `railway status`/`railway whoami`. No deploy, restart, or write action taken against Railway.",
+
+  "topology": {
+    "shared_database": true,
+    "shared_image": true,
+    "railway_project": { "name": "Stratum3", "id": "d77684e8-684b-4944-86f3-820b463c30a8", "environment": "production", "environment_id": "db5d50a5-7080-45a2-b1b8-7ec46c2270ed" },
+    "topology_shape_note": "The prompt's topology called all 9 resources 'services'. `railway status` (read-only, run today) shows Railway itself distinguishes two resource kinds: 'Services' (stratum_sourcing, sourcing-console) and 'Cron jobs' (the other 7). This doesn't contradict the given facts but refines them — see each entry's railway_resource_type and confirmed_schedule below, both newly obtained from `railway status` and not present in the corpus files.",
+    "postgres_instances_observed": {
+      "confidence": "traced",
+      "evidence": "railway status (CLI, read-only, run today) output: 'Databases: Postgres-7cQn: Online · postgres-volume-Jh3R' and 'Postgres: Online · postgres-volume-bnLS'",
+      "note": "TWO Postgres instances exist in this Railway project. Which one each of the 9 sourcing-repo resources' DATABASE_URL points at was not verified — doing so would require reading each service's env var values, which this task's read-only/no-secrets constraint avoids. See open_questions and finding D-07."
+    },
+    "services": [
+      { "name": "agent-jobs", "railway_resource_type": "cron_job", "task_mode": "agent-jobs", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "*/10 * * * *", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true },
+      { "name": "notion-control-plane", "railway_resource_type": "cron_job", "task_mode": "notion-control-plane", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "*/15 * * * *", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true },
+      { "name": "cadence-hourly", "railway_resource_type": "cron_job", "task_mode": "cadence-scan", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "0 * * * *", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true, "distinguishing_env_var": "CADENCE_BUCKET (see finding D-05)" },
+      { "name": "cadence-6h", "railway_resource_type": "cron_job", "task_mode": "cadence-scan", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "5 */6 * * *", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true, "distinguishing_env_var": "CADENCE_BUCKET (see finding D-05)" },
+      { "name": "cadence-weekly", "railway_resource_type": "cron_job", "task_mode": "cadence-scan", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "0 4 * * 1", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true, "distinguishing_env_var": "CADENCE_BUCKET (see finding D-05)" },
+      { "name": "nightly-scan", "railway_resource_type": "cron_job", "task_mode": "nightly-scan", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "0 2 * * *", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true },
+      { "name": "morning-digest", "railway_resource_type": "cron_job", "task_mode": "morning-digest", "entrypoint_line": 10, "runs_migrations": true, "confirmed_schedule": "0 7 * * 1-5", "schedule_source": "railway status (CLI, read-only)", "auto_deploys": true },
+      { "name": "stratum_sourcing", "railway_resource_type": "service", "task_mode": null, "entrypoint_line": 47, "runs_migrations": true, "confirmed_schedule": null, "auto_deploys": true, "notes": "web mode; the branch also seeds sources/signals after migrating (entrypoint.sh lines 49-90) and starts uvicorn plus, conditionally, the OpenClaw gateway (lines 92-114)." },
+      { "name": "sourcing-console", "railway_resource_type": "service", "task_mode": null, "entrypoint_line": null, "runs_migrations": false, "confirmed_schedule": null, "auto_deploys": false, "notes": "No Python, no Dockerfile alembic step. Static Vite build served by Caddy (sourcing-console/Caddyfile). Does not touch Postgres directly. See finding D-08/D-09." }
+    ],
+    "unmapped_task_mode": {
+      "value": "notion-export",
+      "evidence": { "file": "sourcing/entrypoint.sh", "line": 18, "excerpt": "        notion-export)" },
+      "note": "entrypoint.sh case-branches on TASK_MODE=notion-export (calls app.tasks.notion_export), but no Railway resource named notion-export or with that TASK_MODE appears in `railway status`'s 7 cron jobs + 2 services (9 total, matching the given topology count exactly without notion-export). Confidence: traced for the code branch existing; inferred that it is currently unprovisioned (absence-of-evidence from one `railway status` snapshot, not a Railway API query of every service's env vars). See finding D-11."
+    }
+  },
+
+  "migrations": [
+    {
+      "revision": "001", "file": "alembic/versions/001_initial_schema.py",
+      "kind": "additive", "destructive": false,
+      "locks": "ACCESS EXCLUSIVE while creating 6 brand-new tables + 5 non-CONCURRENT indexes, all on tables that do not exist until this migration creates them. No pre-existing rows, no contention with other writers possible.",
+      "backward_compatible_with_previous_image": true,
+      "backward_compatible_note": "First revision; no previous image/schema exists for this repo.",
+      "evidence": "sourcing/alembic/versions/001_initial_schema.py:11-14 `revision = \"001\" / down_revision = None`; :31-128 six `op.create_table` calls."
+    },
+    {
+      "revision": "002", "file": "alembic/versions/002_widen_scan_run_status.py",
+      "kind": "widening", "destructive": false,
+      "locks": "ACCESS EXCLUSIVE on scan_runs for the statement duration; VARCHAR(20)->VARCHAR(30) is a metadata-only widen (no table rewrite, no full-table scan needed since it can only make existing values MORE valid), so the lock is brief regardless of table size.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "Structurally the widen itself is harmless to old code. Operationally FALSE for the reason given in finding D-01: an old-image container that reboots (cron tick, crash-restart) while the DB is already stamped at revision 002 but its own alembic/versions/ only goes to 001 will fail `alembic upgrade head` and exit non-zero before running any application code, regardless of what 002 contains.",
+      "evidence": "sourcing/alembic/versions/002_widen_scan_run_status.py:17-18 `def upgrade() -> None:\\n    op.alter_column(\"scan_runs\", \"status\", type_=sa.String(30), existing_type=sa.String(20))`"
+    },
+    {
+      "revision": "003", "file": "alembic/versions/003_placeholder.py",
+      "kind": "no-op", "destructive": false,
+      "locks": "None; upgrade() is `pass`.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "Same D-01 mechanism applies regardless of content (no-op or not).",
+      "evidence": "sourcing/alembic/versions/003_placeholder.py:6-10 \"This is a no-op migration. The database already has revision '003' recorded in alembic_version, but the original migration file was never committed. The schema matches the current models, so no changes are needed.\"",
+      "note": "This file is itself historical evidence of the same class of hazard as D-01/D-04: an alembic_version value diverged from what was committed to the repo, and had to be patched after the fact with a placeholder revision so `alembic upgrade head` would resolve again. Different proximate cause (an uncommitted local migration) from the 007 multi-service race, same root category: DB migration state can outrun what a given codebase snapshot knows about."
+    },
+    {
+      "revision": "004", "file": "alembic/versions/004_control_plane_foundation.py",
+      "kind": "additive", "destructive": false,
+      "locks": "ACCESS EXCLUSIVE per add_column/add_constraint/create_index statement on `sources` (an existing, populated table — 131 registered sources per docs/HANDOFF.md:43 'Discovery sources registered | 131 | 414' at the time of the adjacent 006/HANDOFF work) and on 7 brand-new tables. All new columns on `sources`/`snapshots`/`findings` are either nullable or carry a server_default, so old-image INSERTs that omit them still succeed. 3 non-CONCURRENT `create_index` calls target `sources` (idx_sources_next_ingest_at, idx_sources_cadence_bucket, idx_sources_onboarding_status) — at ~131-414 rows this is a sub-second lock, not a meaningful writer-blocking event at observed scale.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "Content is additive/harmless to old app code. Operationally FALSE per D-01's universal mechanism.",
+      "evidence": "sourcing/alembic/versions/004_control_plane_foundation.py:35-56 (add_column calls with server_default on `sources`); :84-86 (three non-concurrent create_index calls); :19-33 (enum value 'company' added inside a DO block, not wrapped in `autocommit_block()` — contrast with 006's explicit autocommit_block usage below; harmless here only because upgrade() never uses the new 'company' value within the same transaction it is added in)."
+    },
+    {
+      "revision": "005", "file": "alembic/versions/005_signal_engine.py",
+      "kind": "additive", "destructive": false,
+      "locks": "ACCESS EXCLUSIVE while creating 3 brand-new tables (signals, signal_scans, signal_results) and their indexes. All indexed tables are empty at index-creation time within this same migration, so the missing CONCURRENTLY has no practical lock-duration cost here.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "Content is purely additive (net-new tables, no existing-table changes). Operationally FALSE per D-01.",
+      "evidence": "sourcing/alembic/versions/005_signal_engine.py:19-98 three `op.create_table` calls, no `op.add_column`/`op.alter_column` on any pre-existing table."
+    },
+    {
+      "revision": "006", "file": "alembic/versions/006_entity_typing_and_gate.py",
+      "kind": "data-migrating", "destructive": false,
+      "locks": "Mixed and the most consequential migration in the set: (a) enum widen correctly isolated in `op.get_context().autocommit_block()` (lines 50-52) so it doesn't inherit the surrounding transaction's restrictions; (b) `op.create_index(\"idx_entities_domain\", ...)` and `op.create_index(\"idx_entities_eligible\", ...)` (lines 75-80) run WITHOUT `postgresql_concurrently=True` against `entities`, which by the adjacent date already held meaningful row counts — docs/HANDOFF.md:39 'Rows typed company | 1,884 | 1,274' and docs/REMEDIATION_PLAN.md:3-4 '1,825 rows in entities typed company, 891 typed person' (measured 2026-07-29, one day before this migration's 2026-07-30 Create Date) — so this CREATE INDEX takes a SHARE lock (blocks writers, not readers) on `entities` for a scan-and-build over several thousand rows, not a trivial/empty table; (c) the UPDATE at lines 102-114 rewrites `band`/`coverage` for every row where `status = 'completed'` in `signal_scans` — per docs/REMEDIATION_PLAN.md:5 'Two signal scans completed' as of 2026-07-29, so the row count touched by this specific historical run was ~2, making the actual observed lock duration trivial; the PATTERN (DML mixed into the same transaction as DDL on the same table) is what's flagged, not this instance's measured impact. All of (a)-(c) run inside env.py's single whole-upgrade transaction (see D-04), so any ACCESS EXCLUSIVE/SHARE lock taken is held until the entire migration run commits, not released between statements.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "Operationally FALSE per D-01. Additionally, structurally this is the one migration in the set where an old-image container that (hypothetically) survived past the crash in D-01 would still diverge: its own `band_for()`/scoring code (pre-006) has no concept of MIN_COVERAGE_FOR_BAND or `signals_not_applicable`/`coverage`, so any row it writes during a rollover window would default `coverage` to 0 (server_default) while its own logic might still assign a `strong`/`moderate` band — a data-shape divergence, not a crash. Confidence: inferred (the pre-006 version of signal_engine.py was not read from git history to confirm the exact prior band_for() logic; the current file's design intent is traced from its own comments).",
+      "evidence": "sourcing/alembic/versions/006_entity_typing_and_gate.py:47-52 autocommit_block; :75-80 two non-concurrent create_index calls; :99-114 comment 'Existing scans were scored under the old unknown=0.5 rule...' + the UPDATE statement; :82-83 comment '\"insufficient-evidence\" is 21 characters and the column was varchar(20)' explaining the accompanying widen."
+    },
+    {
+      "revision": "007", "file": "alembic/versions/007_widen_role_hint.py",
+      "kind": "widening", "destructive": false,
+      "locks": "ACCESS EXCLUSIVE brief, metadata-only widen (VARCHAR(80) -> TEXT), no table rewrite, on entity_mentions.",
+      "backward_compatible_with_previous_image": false,
+      "backward_compatible_note": "This is the migration named in the prompt's motivating incident. Content itself (a widen) is harmless to old code. What actually broke was the migration-runner mechanism common to every entry in this table: docs/DECISIONS-PENDING.md:49-51 records the real boot log — 'Pushed as c55b509, live as deployment 0429451b. Boot log 2026-08-13 21:00 UTC: Running upgrade 006 -> 007' — confirming a real container did apply 007 in production on that date; the prompt's own account of the sibling container's crash ('Can\\'t locate revision identified by \\'007\\' ... Stopping Container') is the other half of the same event, observed directly by the requesting agent against live Railway logs, not present verbatim in this git corpus.",
+      "evidence": "sourcing/alembic/versions/007_widen_role_hint.py:9-12 revision docstring naming the 2026-08-12 production crash; :23-30 the single `op.alter_column(..., type_=sa.Text(), existing_type=sa.String(80))`."
+    }
+  ],
+
+  "coverage": {
+    "migrations_total": 7,
+    "migrations_classified": 7,
+    "files_read_full": [
+      "sourcing/entrypoint.sh",
+      "sourcing/railway.toml",
+      "sourcing/Dockerfile",
+      "sourcing/alembic.ini",
+      "sourcing/alembic/env.py",
+      "sourcing/alembic/versions/001_initial_schema.py",
+      "sourcing/alembic/versions/002_widen_scan_run_status.py",
+      "sourcing/alembic/versions/003_placeholder.py",
+      "sourcing/alembic/versions/004_control_plane_foundation.py",
+      "sourcing/alembic/versions/005_signal_engine.py",
+      "sourcing/alembic/versions/006_entity_typing_and_gate.py",
+      "sourcing/alembic/versions/007_widen_role_hint.py",
+      "sourcing/pyproject.toml",
+      "sourcing/app/config.py",
+      "sourcing/.env.example",
+      "sourcing/app/database.py",
+      "sourcing/app/api/console.py",
+      "sourcing/app/api/routes.py",
+      "sourcing/app/api/deps.py",
+      "sourcing/app/tasks/cadence_scan.py",
+      "sourcing/docs/HANDOFF.md",
+      "sourcing/docs/DECISIONS-PENDING.md",
+      "sourcing/docker-compose.yml",
+      "sourcing-console/src/api.ts",
+      "sourcing-console/src/types.ts",
+      "sourcing-console/src/pages/SourcingMapPage.tsx",
+      "sourcing-console/src/pages/CompaniesPage.tsx",
+      "sourcing-console/Caddyfile",
+      "sourcing-console/railway.toml"
+    ],
+    "files_read_partial_or_grepped": [
+      "sourcing/uv.lock (grepped for alembic/sqlalchemy/asyncpg/psycopg2-binary pins only)",
+      "sourcing/app/models.py (grepped for role_hint, cadence_bucket, Source columns only)",
+      "sourcing/app/services/signal_engine.py (lines 1-105 read: BAND_THRESHOLDS, band_for, MIN_COVERAGE_FOR_BAND)",
+      "sourcing/app/services/notion_control.py (lines 280-330 read: env var fallback pattern for Notion database IDs)",
+      "sourcing/app/pipeline/orchestrator.py (lines 31-185 read: run_scan/run_due_scan/cadence_bucket filter)",
+      "sourcing/app/sources/browser_fetcher.py (grepped for DATA_DIR usage)",
+      "sourcing-console/src/pages/*.tsx other than SourcingMapPage/CompaniesPage (grepped for api.get/api.post calls and band/insufficient usage only, not read end-to-end)",
+      "sourcing/docs/REMEDIATION_PLAN.md (read in full but used only for the two production row-count citations against migration 006's timing; its content is a scoring/data-quality remediation plan, not deploy-hazard material)"
+    ],
+    "not_read": [
+      "sourcing/app/main.py", "sourcing/app/schemas.py",
+      "sourcing/app/pipeline/analyzer.py", "sourcing/app/pipeline/deduplicator.py", "sourcing/app/pipeline/differ.py", "sourcing/app/pipeline/prefilter.py", "sourcing/app/pipeline/scorer.py", "sourcing/app/pipeline/tracker.py",
+      "sourcing/app/services/agent_pipeline.py", "sourcing/app/services/job_queue.py", "sourcing/app/services/ops_client.py", "sourcing/app/services/source_pipeline.py",
+      "sourcing/app/sources/base.py", "sourcing/app/sources/registry.py", "sourcing/app/sources/rss_fetcher.py", "sourcing/app/sources/url_unwrap.py", "sourcing/app/sources/web_fetcher.py",
+      "sourcing/app/tasks/agent_jobs.py", "sourcing/app/tasks/morning_digest.py", "sourcing/app/tasks/nightly_scan.py", "sourcing/app/tasks/notion_control_plane.py", "sourcing/app/tasks/notion_export.py",
+      "sourcing/app/integrations/llm.py", "sourcing/app/integrations/notion_sync.py", "sourcing/app/integrations/slack_bot.py",
+      "sourcing/scripts/import_scan_data.py", "sourcing/scripts/seed_demo_fixtures.py", "sourcing/scripts/seed_signals.py",
+      "sourcing/tests/test_agent_job_cycle.py (line count only)", "sourcing/tests/test_signal_scoring.py (line count only)",
+      "sourcing/docs/SCORING_CONTRACT.md", "sourcing/docs/SHORTLIST.md", "sourcing/docs/DISCOVERY_BRIEF.md (read but off-topic: sourcing research prompt, not deploy-related)",
+      "sourcing/workspace/*.md",
+      "sourcing/seeds/*.json",
+      "sourcing/src/server.js", "sourcing/src/package.json",
+      "sourcing-console/src/pages/LoginPage.tsx", "sourcing-console/src/pages/CompanyPage.tsx", "sourcing-console/src/pages/PicksPage.tsx", "sourcing-console/src/pages/PipelinePage.tsx", "sourcing-console/src/pages/SignalsPage.tsx", "sourcing-console/src/pages/SourcesPage.tsx", "sourcing-console/src/components/Layout.tsx", "sourcing-console/src/components/Radar.tsx", "sourcing-console/src/components/widgets.tsx (grepped, not read end-to-end)",
+      "sourcing-console/package.json", "sourcing-console/vite.config.ts", "sourcing-console/dist/* (built artifacts)"
+    ],
+    "scope_rationale": "43 .py files exist under sourcing/app/. Full reads were targeted at files where deploy/migration/config hazards live (entrypoint, Dockerfile, railway.toml x2, alembic/*, config.py, .env.example, the API surface consumed by sourcing-console, and the one file — cadence_scan.py/orchestrator.py — needed to resolve the CADENCE_BUCKET question). Business-logic-only files (scoring, extraction, individual source fetchers, individual task bodies beyond cadence_scan) were not read; none of the findings below depend on their contents, and none were skimmed for hazards, so no claim is made about them beyond their existence."
+  },
+
+  "findings": [
+    {
+      "id": "D-01",
+      "class": "D",
+      "subclass": "migration_rollover_window",
+      "file": "sourcing/entrypoint.sh", "line": 10, "symbol": "TASK_MODE branch / web-mode branch",
+      "excerpt": "if [ -n \"${TASK_MODE:-}\" ]; then\n    echo \"--- Task mode: $TASK_MODE ---\"\n    python -m alembic upgrade head\n    case \"$TASK_MODE\" in ...   [line 10]\n... (web mode, line 47) echo \"--- Running database migrations ---\"\npython -m alembic upgrade head",
+      "failure_scenario": "Every one of the 8 Python resources runs `python -m alembic upgrade head` unconditionally on EVERY boot (TASK_MODE branch: entrypoint.sh:10; web mode: entrypoint.sh:47) — not just on deploy, but on every scheduled cron tick, since Railway starts a fresh container per cron invocation. A push to main that includes a migration causes the FIRST container (of any of the 9 resources) to boot on the new image to advance alembic_version to the new revision. Any OTHER resource that has not yet received the new image — because Railway's redeploy of 9 separate resources from one push is 'near-simultaneous', not atomic — will, on its next boot (its own redeploy completing late, or an unrelated crash-restart, or simply its cron schedule firing mid-rollout), run `alembic upgrade head` against a DB already at a revision its own local alembic/versions/ directory has never heard of. Alembic cannot resolve that revision and raises (observed live, per the requesting agent's direct read of Railway logs today): \"Can't locate revision identified by '007' / FAILED / Stopping Container\". The container exits non-zero and Railway's on_failure restart policy (railway.toml:7) retries it — which fails identically until that resource's own redeploy finishes and it receives the migration file. This is corroborated inside the repo by docs/DECISIONS-PENDING.md:49-51, which logs the matching successful half of the same 2026-08-13 event ('Boot log 2026-08-13 21:00 UTC: Running upgrade 006 -> 007') for whichever container won the race, and by alembic/versions/003_placeholder.py:6-10, an earlier, differently-caused instance of the same root problem (alembic_version diverged from what a given codebase snapshot's migration files can resolve).",
+      "severity": "critical",
+      "frequency": "every_migration",
+      "gate": {
+        "kind": "runbook_step",
+        "assert": "Requested by the task: propose a real fix, not just document the bug. Three concrete options, none implemented in this repo today (evidence: entrypoint.sh has no locking, no leader-election, and no separate migration phase; railway.toml has no pre-deploy/release-phase command field): (1) Move `alembic upgrade head` out of every service's boot path into exactly one dedicated one-shot migration job that all 9 resources' deploys wait on before starting — this is the only option of the three that removes the crash mechanism entirely, since no non-migration-job container would ever call alembic again. (2) Wrap the existing per-service `alembic upgrade head` calls in a `pg_advisory_lock` so concurrent boots serialize instead of racing — this only fixes the concurrent-DDL race (D-02), not the stale-image-can't-resolve-a-future-revision crash, because the stale image still lacks the migration file needed to advance past its own local head. (3) Have entrypoint.sh catch the specific 'Can't locate revision' failure and, instead of exiting non-zero into a crash-restart loop, exit 0 / skip straight to running the task — treats the symptom (crash-looping) without removing the several-minute window where that resource is silently not running its workload. CI check to make the chosen fix verifiable either way: assert that `grep -c 'alembic upgrade head' entrypoint.sh` invocations reachable from more than one Railway resource's boot path is reduced to the intended count for whichever option is chosen, and add an integration test that boots two containers pointed at the same fresh Postgres from two different git revisions (one before, one after a migration) and asserts the older one either waits/no-ops or fails a documented, non-crash-looping way."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-02",
+      "class": "D",
+      "subclass": "concurrent_migration",
+      "file": "sourcing/alembic/env.py", "line": 30, "symbol": "run_migrations_online",
+      "excerpt": "def run_migrations_online() -> None:\n    connectable = create_engine(settings.sync_database_url)\n    with connectable.connect() as connection:\n        context.configure(connection=connection, target_metadata=target_metadata)\n        with context.begin_transaction():\n            context.run_migrations()",
+      "failure_scenario": "No advisory lock, `SELECT ... FOR UPDATE`, or any other mutual-exclusion mechanism appears anywhere in this file, entrypoint.sh, or alembic.ini (traced: grepped the whole repo for `advisory_lock`, `pg_advisory`, `FOR UPDATE`, `transaction_per_migration` — zero matches). Given that a push redeploys up to 9 resources near-simultaneously and each independently executes this exact function, it is possible for two or more containers to start `alembic upgrade head` while both still read the SAME pre-migration alembic_version row. What Postgres/Alembic then do (inferred from documented Postgres DDL-locking semantics, not executed against this repo's DB): the DDL statements in the migration (CREATE TABLE, ALTER TYPE, CREATE INDEX, ALTER COLUMN TYPE all take ACCESS EXCLUSIVE or SHARE locks) cause the second transaction to block behind the first's lock; once the first commits, the second's own attempt to run the identical DDL against now-already-migrated objects typically errors (e.g. 'relation already exists' for CREATE TABLE) rather than silently no-op'ing, because none of these migrations use IF NOT EXISTS guards except the enum ADD VALUE statements. A container that errors here exits non-zero into the same crash-restart loop as D-01, for a different underlying reason (a true race, not staleness).",
+      "severity": "high",
+      "frequency": "every_migration",
+      "gate": {
+        "kind": "test",
+        "assert": "Integration test: spin up two `alembic upgrade head` processes concurrently (e.g. via subprocess) against the same freshly-seeded test Postgres, both starting from the same revision, and assert the outcome is either (a) both succeed because a lock serialized them, or (b) the loser fails in a detected, logged, non-silent way — not a bare non-zero process exit indistinguishable from any other crash. Today this test does not exist (tests/conftest.py and tests/test_agent_job_cycle.py were the only test infra read; neither touches migrations)."
+      },
+      "confidence": "traced for absence of locking code; inferred for the specific concurrent-DDL outcome (not reproduced against a live DB in this task)"
+    },
+    {
+      "id": "D-03",
+      "class": "D",
+      "subclass": "destructive_migration",
+      "file": "sourcing/alembic/versions/006_entity_typing_and_gate.py", "line": 75, "symbol": "upgrade (idx_entities_domain, idx_entities_eligible)",
+      "excerpt": "op.create_index(\"idx_entities_domain\", \"entities\", [\"domain\"])\nop.create_index(\n    \"idx_entities_eligible\",\n    \"entities\",\n    [\"entity_type\", \"is_eligible\"],\n)",
+      "failure_scenario": "Neither `create_index` call passes `postgresql_concurrently=True`. Postgres takes a SHARE lock for the duration of a non-concurrent CREATE INDEX, which blocks INSERT/UPDATE/DELETE (but not SELECT) on `entities` for the build duration. At the time this migration shipped, `entities` held on the order of 1,825-3,173 rows (docs/HANDOFF.md:39, docs/REMEDIATION_PLAN.md:3-4) — small enough that the actual 2026-07-30 lock window was almost certainly sub-second. The pattern is still flagged because (a) `entities` is written by every agent-jobs run (every 10 minutes) and by every cadence-scan tick, so ANY writer-blocking window on it, however brief, has live contenders; and (b) as the table grows, the same non-concurrent pattern on a future migration would scale its lock duration with table size, and CONCURRENTLY cannot be added retroactively to an already-shipped migration.",
+      "severity": "medium",
+      "frequency": "every_migration",
+      "gate": {
+        "kind": "ci_check",
+        "assert": "Add a lint/CI check that scans alembic/versions/*.py for `op.create_index(` calls lacking `postgresql_concurrently=True`, and fails the build unless the index target is a table created in the same migration (which is safe, since it is necessarily empty). Project CLAUDE.md-equivalent for this repo notes CI does not currently cover lint or boundary rules (docs/DECISIONS-PENDING.md:46-47: 'Nothing runs this gate but a person. There is no .github/workflows in the repo.') — traced: `find .. -maxdepth 1 -iname .github` returned nothing for this repo root."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-04",
+      "class": "D",
+      "subclass": "migration_rollover_window",
+      "file": "sourcing/alembic/env.py", "line": 34, "symbol": "run_migrations_online",
+      "excerpt": "        with context.begin_transaction():\n            context.run_migrations()",
+      "failure_scenario": "`context.run_migrations()` applies EVERY pending revision between a container's current DB-recorded revision and head inside this single `begin_transaction()` block (alembic.ini has no `transaction_per_migration` override — traced, key absent from sourcing/alembic.ini). For a container that boots at head this is a no-op. But for any resource that has been down or unscheduled across more than one migration (e.g., a rarely-firing cron job like cadence-weekly, or a resource that was manually stopped), a single boot would run several migrations' DDL back-to-back in one transaction, meaning every ACCESS EXCLUSIVE/SHARE lock taken by an early migration in that batch (e.g. 006's CREATE INDEX on `entities`) is held until the LAST migration in the batch also commits — not released between migrations. This compounds D-03's lock-duration concern in the one scenario where table size and batch length both grow.",
+      "severity": "medium",
+      "frequency": "rare",
+      "gate": {
+        "kind": "runbook_step",
+        "assert": "Before deploying a migration, check each of the 9 resources' currently-recorded alembic revision (e.g. via a one-off `SELECT version_num FROM alembic_version` — there is only one alembic_version row since all 9 resources share one DB, so this check is actually trivial: there is never more than one revision gap to worry about across resources, only across time if a resource has been offline). This finding is lower-severity than initially scoped for that reason: because all resources share ONE Postgres and hence one alembic_version row, in the common case every resource is either already at head or exactly one migration behind, not several — the multi-migration-batch scenario requires a resource to have missed more than one deploy's migrations while never restarting in between, which is uncommon for cron jobs firing every 10-15 minutes but plausible for cadence-weekly (7-day gaps) or morning-digest (skips weekends)."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-05",
+      "class": "D",
+      "subclass": "silent_default",
+      "file": "sourcing/app/tasks/cadence_scan.py", "line": 14, "symbol": "run_cadence_scan",
+      "excerpt": "cadence_bucket = os.getenv(\"CADENCE_BUCKET\") or None",
+      "failure_scenario": "Three separate Railway cron-job resources — cadence-hourly, cadence-6h, cadence-weekly — all run TASK_MODE=cadence-scan (the same code path, entrypoint.sh:27-29) and are distinguished ONLY by a CADENCE_BUCKET env var each is presumably configured with individually (not verified — reading actual per-resource env values was avoided; see open_questions). If any one of the three is deployed/reconfigured without CADENCE_BUCKET set, `cadence_bucket` resolves to `None`, and app/pipeline/orchestrator.py:64 `if cadence_bucket: stmt = stmt.where(Source.cadence_bucket == cadence_bucket)` SKIPS the bucket filter entirely — the job silently scans ALL due sources across every bucket instead of just its own, with no error, no warning beyond a structured log line (cadence_scan.py:17 `logger.info(\"cadence_scan_starting\", cadence_bucket=cadence_bucket, ...)` which logs `cadence_bucket=None` but nothing alerts on that). This both defeats the purpose of having three separate cadence tiers (rate-limiting/spreading load across sources per docs/HANDOFF.md's fetch-concurrency concerns) and could cause duplicate/overlapping scans of the same sources from multiple cron jobs within the same window.",
+      "severity": "high",
+      "frequency": "rare",
+      "gate": {
+        "kind": "test",
+        "assert": "Add a unit test asserting `run_due_scan(cadence_bucket=None)` is never reachable from a TASK_MODE=cadence-scan boot — either make CADENCE_BUCKET a required setting (fail entrypoint.sh fast, before calling the task, when TASK_MODE=cadence-scan and CADENCE_BUCKET is unset) or add an explicit `if cadence_bucket is None: raise` at the top of run_cadence_scan if 'scan everything' is never an intended production mode. If unscoped scanning IS an intended manual/ad-hoc mode, document it in .env.example and cadence_scan.py's docstring rather than leaving it as an undocumented fallthrough of a falsy check."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-06",
+      "class": "D",
+      "subclass": "config_drift",
+      "file": "sourcing/.env.example", "line": 1, "symbol": "env var documentation vs app/config.py Settings",
+      "excerpt": ".env.example documents 21 variables total (grep of `=` lines, sourcing/.env.example:1-49). app/config.py defines ~38 Settings fields with aliases; at least 15 have NO entry in .env.example: notion_api_version (config.py:34), notion_parent_page_id (:36), notion_source_registry_database_id (:37-39), notion_company_watchlist_database_id (:40-42), notion_people_watchlist_database_id (:43-45), notion_webhook_verification_token (:46-48), openclaw_gateway_url (:52), embedding_model (:63), openrouter_api_key (:65), lexie_ops_url (:69), lexie_ops_token (:70), and all 5 score_weight_* fields (:81-85) plus signal_scan_batch_size (:97), auto_growth_daily_limit/auto_growth_per_parent_limit/watchlist_company_threshold/watchlist_people_threshold (:100-103).",
+      "failure_scenario": "Every one of these has a silent default (empty string or a hardcoded numeric constant) in app/config.py rather than failing to start when unset (Pydantic Settings with a `default=` never raises for a missing env var). A developer or operator provisioning a new environment from .env.example alone would have no signal that notion_source_registry_database_id, notion_company_watchlist_database_id, or notion_people_watchlist_database_id exist and need setting — the service boots successfully either way. For the Notion IDs specifically this is partially mitigated: app/services/notion_control.py:307-315 falls back to a previously-discovered value stored in the `integration_states` table (migration 004) when the env var is empty, so a first-ever boot with no env var and no prior state is the only case that stays silently empty (not verified beyond ocean_database_id's fallback at line 315 — the other three IDs' fallback logic was not read to the same depth). The 5 score_weight_* and 4 auto_growth/watchlist_* fields have no such fallback — they simply take their hardcoded default from config.py forever if never set anywhere.",
+      "severity": "medium",
+      "frequency": "one_off",
+      "gate": {
+        "kind": "ci_check",
+        "assert": "CI check that parses app/config.py's `Field(..., alias=\"X\")` declarations and asserts every alias appears (commented or not) in .env.example; fails the build on any new Settings field added without a matching .env.example entry."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-07",
+      "class": "D",
+      "subclass": "config_drift",
+      "file": "sourcing/app/config.py", "line": 16, "symbol": "Settings.database_url",
+      "excerpt": "database_url: str = Field(\n    default=\"postgresql+asyncpg://postgres:postgres@localhost:5432/stratum_sourcing\",\n    alias=\"DATABASE_URL\",\n)",
+      "failure_scenario": "`railway status` (read-only, run today) lists TWO Postgres databases in the Stratum3 project: 'Postgres-7cQn' (volume postgres-volume-Jh3R) and 'Postgres' (volume postgres-volume-bnLS). DATABASE_URL is a plain string with a localhost default and no validation beyond the asyncpg-driver rewrite in app/database.py:11-12. If any one of the 9 resources' DATABASE_URL were pointed at the wrong instance (a copy-paste error when wiring a new cron job's variables, for example) it would boot successfully, apply its own consistent set of migrations against that instance, and behave correctly in isolation — the drift would only surface as data appearing to be missing when read from the OTHER instance, which is exactly the kind of failure this task's rules call out as surfacing only at runtime. Not verified which instance each of the 9 resources actually references (would require reading secret env values); see open_questions.",
+      "severity": "medium",
+      "frequency": "rare",
+      "gate": {
+        "kind": "assertion",
+        "assert": "Add a boot-time log line (or /healthz field) reporting `current_database()`/`inet_server_addr()` so the resolved Postgres identity is visible per-deployment without reading secrets, and a runbook step to diff that value across all 9 resources after any variable-wiring change."
+      },
+      "confidence": "traced (two Postgres instances exist) + inferred (the misrouting risk itself was not observed, only reasoned from the topology)"
+    },
+    {
+      "id": "D-08",
+      "class": "D",
+      "subclass": "config_drift",
+      "file": "sourcing-console/Caddyfile", "line": 8, "symbol": "reverse_proxy",
+      "excerpt": "handle /api/* {\n\treverse_proxy {$SOURCING_API_URL}\n}",
+      "failure_scenario": "sourcing-console's entire backend connection is one env var, SOURCING_API_URL, read at container start by Caddy. This is a cross-service agreement point: it must match wherever `stratum_sourcing` (the web service) is actually reachable from. Because sourcing-console does not auto-deploy (docs/HANDOFF.md:165-169, and this task's given deployment facts), if the backend's private/public URL ever changes (service rename, Railway private-networking domain rotation, moving behind a different proxy) and nobody manually redeploys/reconfigures sourcing-console, every /api/* call from the console fails at the Caddy layer — invisibly to anyone who isn't looking at the console itself, since sourcing-console has no synthetic monitoring found in this corpus.",
+      "severity": "medium",
+      "frequency": "rare",
+      "gate": {
+        "kind": "runbook_step",
+        "assert": "A scheduled smoke check (external to this repo, since sourcing-console has no CI) that fetches sourcing-console's own deployed /api/console/overview (or /api/console/auth/check) through its public domain and alerts on non-2xx, so a SOURCING_API_URL break is caught within one check interval instead of at the next human page-load."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-09",
+      "class": "D",
+      "subclass": "stale_service",
+      "file": "sourcing/docs/HANDOFF.md", "line": 165, "symbol": "sourcing-console auto-deploy",
+      "excerpt": "Known operational gap: the `sourcing-console` service does not auto-deploy. Its last GitHub-triggered deploy was 28 July. I have been deploying it manually via `railway up` from an isolated copy of the directory (`railway up` from the repo root fails — Railpack finds no app). Reconnect the GitHub trigger or frontend changes will silently not ship.",
+      "failure_scenario": "Answering the task's Q5 directly: comparing sourcing-console's current source (last commit touching sourcing-console/: 1a46668, 2026-07-30 12:27:45 — `git log --format='%H %ci %s' -- sourcing-console/` — which also produced the dist/ build actually shipped, per `git log -1 --format=%ci -- sourcing-console/dist` returning the same timestamp) against the backend's /api/console/* surface found ZERO route/field/param mismatches today: `git log --since='2026-07-30 12:28' -- sourcing/app/api/` returns exactly one commit (c55b509, today's role_hint fix) which per `git show --stat c55b509` touched migrations/models.py/agent_pipeline.py/tests only — not app/api/console.py, routes.py, or schemas.py. Every fetch call in sourcing-console/src (grepped across all pages: /api/console/signals, /overview, /picks, /sources, /companies, /companies/{id}, /auth/check) matches a route and response shape actually implemented in app/api/console.py today, and CompaniesPage.tsx's query params (q, band, eligible_only, list_tag, limit, offset) match list_companies()'s signature exactly. The one literal drift found is cosmetic, not breaking: see D-10. The structural risk this finding is really about is that this state is coincidental — nothing prevents a FUTURE console-facing backend change from shipping to sourcing_sourcing while sourcing-console silently keeps serving the old build, and nothing in this repo would detect it.",
+      "severity": "high",
+      "frequency": "rare",
+      "gate": {
+        "kind": "runbook_step",
+        "assert": "Reconnect sourcing-console's GitHub auto-deploy trigger (already an open item HANDOFF.md itself raised and left unresolved as of this corpus's commit) OR add a CI check that fails when any commit touches sourcing/app/api/console.py, routes.py, or schemas.py without a corresponding commit touching sourcing-console/src/ in the same PR/window."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-10",
+      "class": "D",
+      "subclass": "config_drift",
+      "file": "sourcing-console/src/types.ts", "line": 7, "symbol": "ScanSummary.band",
+      "excerpt": "band: \"strong\" | \"moderate\" | \"weak\" | \"insufficient\" | null;",
+      "failure_scenario": "The backend's actual band values (sourcing/app/services/signal_engine.py:86-104, BAND_THRESHOLDS + band_for()) are `\"strong\"`, `\"moderate\"`, `\"weak\"`, `\"poor\"`, or `\"insufficient-evidence\"` — the TS union above has neither \"poor\" nor \"insufficient-evidence\", and instead lists a value (\"insufficient\") the backend never produces. This is a genuine, citable contract drift in the type declaration. It does NOT cause a runtime break: verified by grep that every actual runtime usage (components/widgets.tsx:26-32 BAND_LABELS lookup with `?? band` fallback, pages/CompaniesPage.tsx:13/146 filter options and CSS pill class, pages/PipelinePage.tsx:22/29 BAND_ORDER, pages/SourcingMapPage.tsx:34-40 BAND_LABELS, styles.css:169/376 `.pill.insufficient-evidence`) is keyed on the runtime string value, not the TS union, and all of them correctly handle \"poor\" and \"insufficient-evidence\". TypeScript's structural typing also doesn't reject the wider runtime string here since these are plain string-keyed lookups, not exhaustive switches. This is stale documentation, not a live defect.",
+      "severity": "low",
+      "frequency": "one_off",
+      "gate": {
+        "kind": "assertion",
+        "assert": "Fix the type to `band: \"strong\" | \"moderate\" | \"weak\" | \"poor\" | \"insufficient-evidence\" | null` and, ideally, generate it from a shared source (the backend's BAND_THRESHOLDS/band_for output) so the two cannot drift silently again — there is no shared contract file between sourcing/ and sourcing-console/ today (traced: sourcing-console has its own hand-written src/types.ts with no import from or codegen against sourcing/app/schemas.py or signal_engine.py)."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "D-11",
+      "class": "D",
+      "subclass": "config_drift",
+      "file": "sourcing/entrypoint.sh", "line": 18, "symbol": "notion-export case branch",
+      "excerpt": "        notion-export)\n            python -m app.tasks.notion_export\n            ;;",
+      "failure_scenario": "See topology.unmapped_task_mode. A shared entrypoint.sh carries a TASK_MODE branch with no currently-provisioned Railway resource behind it (per one `railway status` snapshot). This is low-risk while dormant, but it means the shared image's behavior surface is larger than what's actually exercised in production, and anyone reprovisioning or copy-pasting a cron job config could accidentally target a dead/untested code path (app/tasks/notion_export.py was not read in this task) believing it to be equivalent to notion-control-plane.",
+      "severity": "low",
+      "frequency": "rare",
+      "gate": {
+        "kind": "ci_check",
+        "assert": "Either remove the notion-export branch if truly superseded by notion-control-plane, or add a comment in entrypoint.sh recording which Railway resource(s), if any, currently use it, so the next reader doesn't have to cross-reference `railway status` to find out."
+      },
+      "confidence": "traced for the code branch; inferred that it is unprovisioned (one CLI snapshot, not exhaustive)"
+    }
+  ],
+
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "question": "How should migrations-on-boot be fixed, given D-01/D-02 share one root cause (every one of 9 resources unconditionally re-runs `alembic upgrade head` on every boot, with no locking)?",
+      "why_it_matters": "This is the single change that would eliminate the largest number of findings at once (D-01, D-02, and D-04 all trace to entrypoint.sh:10/47 + alembic/env.py's transaction model).",
+      "options": [
+        { "option": "Single dedicated one-shot migration job/phase; all 9 resources wait on it before starting their own boot logic", "evidence_for": "Structurally removes the crash mechanism entirely — no non-migration container would ever call alembic again, so 'old image vs new DB revision' becomes impossible.", "evidence_against_or_cost": "Not supported by anything observed in this repo today: railway.toml (sourcing/railway.toml:1-11) has no pre-deploy/release-phase field, and entrypoint.sh has no leader-election. Would require new Railway-level orchestration not present in this corpus." },
+        { "option": "Wrap the existing per-resource `alembic upgrade head` calls in a Postgres advisory lock", "evidence_for": "Smaller change; fixes D-02's concurrent-DDL race directly.", "evidence_against_or_cost": "Does not fix D-01's actual observed failure mode (a stale image's own alembic/versions/ directory lacks the new revision file entirely — no amount of lock-waiting lets it resolve a revision it doesn't have on disk)." },
+        { "option": "Keep current per-resource migration calls, but make the crash path graceful (catch 'Can't locate revision', skip to running the task instead of exiting non-zero)", "evidence_for": "Smallest change; stops the crash-restart loop.", "evidence_against_or_cost": "Treats the symptom, not the cause — that resource still silently doesn't apply/benefit from the new migration and runs stale code against a schema the DB has already moved past, for the rest of the rollover window." }
+      ]
+    },
+    {
+      "id": "OQ-2",
+      "question": "Is CADENCE_BUCKET=unset ('scan everything') a deliberate fallback mode (e.g. for manual/ad-hoc full scans) or an unintended gap that should fail fast?",
+      "why_it_matters": "Determines whether D-05's gate should be 'make it required' or 'document it as intentional'.",
+      "options": [
+        { "option": "Required env var for TASK_MODE=cadence-scan; fail fast if unset", "evidence_for": "app/pipeline/orchestrator.py:64 `if cadence_bucket:` currently makes 'unset' behaviorally identical to 'scan the entire due-source universe', which is a large, silent behavior change for what looks like a narrow per-tier job." },
+        { "option": "Keep as designed fallback for a legitimate manual/full-scan use case", "evidence_for": "The `or None` construction in cadence_scan.py:14 and the falsy-check in orchestrator.py:64 look like a deliberate, if undocumented, escape hatch rather than an oversight — but this repo's docs (.env.example, HANDOFF.md, DECISIONS-PENDING.md) never mention CADENCE_BUCKET at all, so intent could not be confirmed either way from the corpus." }
+      ]
+    },
+    {
+      "id": "OQ-3",
+      "question": "Which of the two Postgres instances in the Stratum3 Railway project (Postgres-7cQn vs Postgres) does each of the 9 sourcing-repo resources' DATABASE_URL actually reference?",
+      "why_it_matters": "Determines whether D-07 is a live misconfiguration or a purely theoretical risk.",
+      "options": [
+        { "option": "Verify by reading each resource's DATABASE_URL value", "evidence_for": "Would directly answer the question.", "evidence_against_or_cost": "Requires reading secret env values, which this task avoided printing/exfiltrating per its read-only, no-modification framing." },
+        { "option": "Leave unresolved; add the boot-time visibility assertion proposed in D-07's gate instead", "evidence_for": "Answers the question going forward without ever needing to read a secret." }
+      ]
+    },
+    {
+      "id": "OQ-4",
+      "question": "Is entrypoint.sh's notion-export TASK_MODE branch dead code, or is there a 10th Railway resource using it that a single `railway status` snapshot missed?",
+      "why_it_matters": "Affects whether D-11 is worth acting on and whether the topology's '9 services' count (matched by this task's own read-only railway status output) is actually complete.",
+      "options": [
+        { "option": "Dead code — remove it", "evidence_for": "Not present in `railway status`'s 7 cron jobs + 2 services, which sums to exactly 9 and matches the given topology count with no remainder." },
+        { "option": "Live but outside this snapshot (e.g. paused, or in a different environment than 'production')", "evidence_for": "Not ruled out — only one environment (production) and one point-in-time snapshot were checked." }
+      ]
+    },
+    {
+      "id": "OQ-5",
+      "question": "Given today's check found zero live sourcing-console/backend contract breaks (D-09), is reconnecting the GitHub auto-deploy trigger still the right fix, versus formalizing 'manual deploy via railway up' as the process with a checklist?",
+      "why_it_matters": "docs/HANDOFF.md already flagged this as an open item on 2026-07-30 and it remains open as of this corpus's commit (c55b509, 2026-08-13) — a decision, not a further-investigation question.",
+      "options": [
+        { "option": "Reconnect GitHub auto-deploy", "evidence_for": "docs/HANDOFF.md:169 states this directly as the fix its author intended: 'Reconnect the GitHub trigger or frontend changes will silently not ship.'" },
+        { "option": "Keep manual `railway up` deploys, but add the CI check proposed in D-09's gate so a needed-but-missed deploy is caught instead of relying on memory", "evidence_for": "docs/HANDOFF.md:167-168 notes `railway up` from the repo root doesn't even work ('Railpack finds no app'), implying the manual process itself is fragile and worth formalizing regardless of auto-deploy." }
+      ]
+    }
+  ]
+}

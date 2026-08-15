@@ -30,3 +30,8 @@ Thumbs.db
 *.xls
 *.docx
 *.pptx
+
+# A separate git repository that happens to live here. Without this,
+# `git add -A` stages it as a gitlink and commits a broken submodule
+# pointer that clones cannot resolve.
+/agrana/

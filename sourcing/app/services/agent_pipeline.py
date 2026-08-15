@@ -737,6 +737,8 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
             # rollback below expires every object in the session, and a stale
             # one cannot be read back without IO the failure path cannot do.
             job = await db.get(AgentJob, job_id)
+            if job is None:
+                continue
             job_type, attempt = job.job_type, job.attempts
             logger.info(
                 "agent_job_start",
@@ -761,7 +763,8 @@ async def run_agent_job_cycle(limit: int = 25, lease_owner: str = "agent-worker"
                 await db.rollback()
                 logger.exception("agent_job_failed", job_id=job_id, job_type=job_type)
                 job = await db.get(AgentJob, job_id)
-                await mark_job_failed(db, job, error=str(error), retry=attempt < 4)
+                if job is not None:
+                    await mark_job_failed(db, job, error=str(error), retry=attempt < 4)
                 failed += 1
             # Durable per job: slow jobs (signal scans do minutes of research)
             # must not lose the whole cycle's work to one restart.

@@ -1,0 +1,99 @@
+# Secret scanning for this repository.
+#
+# This replaces a hand-rolled regex scanner that failed four verification
+# rounds in a row — it missed *_PASSWORD variable names, the "password": form
+# in JSON, any secret containing % or $, and it scanned only one of the four
+# project directories. Detecting secrets by shape is a solved problem owned by
+# a maintained ruleset, not something to reinvent here.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "production-postgres-dsn"
+description = "A Postgres DSN with an inline password for a non-local host"
+# No lookaheads: gitleaks uses Go's RE2, which rejects them outright. Local
+# hosts are excluded by the rule's own allowlist below instead.
+regex = '''postgres(?:ql)?(?:\+\w+)?://[^:/@\s]+:[^@\s]{8,}@[A-Za-z0-9.\-]+'''
+tags = ["database", "credential"]
+
+  [rules.allowlist]
+  description = "Local development targets, and our own redaction placeholder"
+  regexTarget = "match"
+  regexes = [
+    '''@(localhost|127\.0\.0\.1|db|postgres|host\.docker\.internal)([:/]|$)''',
+    '''://[^:/@\s]+:<REDACTED>@''',
+    # `{pw}`, `${PGPASSWORD}` — a template, not a value. Accepted smuggling
+    # route: a genuine password containing a brace or dollar would be exempt.
+    # DSN passwords are percent-encoded, so those characters do not survive.
+    '''://[^:/@\s]*:[^@\s]*[{}$]''',
+  ]
+
+[[rules]]
+id = "postgres-dsn-inline-password"
+description = "A Postgres DSN carrying an inline password, host on the same line or not"
+# gitleaks matches line by line, so a DSN split across two adjacent string
+# literals — the form that hid a credential in reclassify_entities.py for
+# months — never presents a complete pattern on either line. This rule needs
+# only the `scheme://user:secret` prefix. A 12-character minimum keeps local
+# dev URLs (`postgres:postgres@localhost`) and `<REDACTED>` below the bar.
+regex = '''postgres(?:ql)?(?:\+\w+)?://[^:/@\s"']+:([^@\s"']{12,})'''
+secretGroup = 1
+# Floor only — see the note on password-assignment. A 16-character
+# `Sommer2024Berlin` scores 3.500 and a 16-digit password 3.250, so a 3.5
+# threshold silently exempted exactly the passwords people actually choose.
+entropy = 2.5
+tags = ["database", "credential"]
+
+[[rules]]
+id = "password-assignment"
+description = "A password literal assigned to a variable or key"
+# gitleaks' default ruleset does NOT catch these: verified that
+# `CONSOLE_PASSWORD=<32 chars>`, `password="<32 chars>"` and the JSON
+# `"password": "<32 chars>"` form all produce zero findings under the defaults.
+# Those are precisely the shapes that leaked here, so they get an explicit rule.
+#
+# Entropy is NOT the discriminator, because it cannot be one. gitleaks measures
+# Shannon bits per CHARACTER, so the ceiling is log2(len) — a threshold of 4.0
+# is unreachable below 16 characters, and measured against real values the
+# distributions overlap completely: `getPasswordFromVault` scores 3.822,
+# identical to `Tr0ub4dor&3Xkcd!2024`, and `process.env.DB_PASSWORD` (4.089)
+# scores higher than most genuine secrets. Structure separates them instead —
+# a real secret mixes character classes; an identifier or a placeholder does
+# not. Entropy is kept only as a floor against `aaaaaaaaaaaa`.
+regex = '''(?i)password["']?\s*[:=]\s*["']?([A-Za-z0-9+/=_\-!@#$%^&*.]{12,})["']?'''
+secretGroup = 1
+entropy = 2.5
+tags = ["credential"]
+
+  [rules.allowlist]
+  description = "Identifiers, env-var references and placeholders — not secrets"
+  # No regexTarget: these apply to the captured secret. Setting it to "match"
+  # made every pattern re-anchor on `password<sep>` and therefore inspect only
+  # the first characters of the value, so any secret merely *beginning* with an
+  # allowed word was exempt in full.
+  regexes = [
+    # resolveControlUiPassword, getPasswordFromVault, changeme, placeholder…
+    '''^[A-Za-z_]+$''',
+    # DB_PASSWORD, YOUR_PASSWORD_HERE — a reference, not a value. Must start
+    # with a letter: `^[A-Z0-9_]+$` also matched an all-digit password.
+    '''^[A-Z][A-Z0-9_]*$''',
+    # process.env.X, os.environ, calls, and ${…} / {…} / <…> interpolation
+    '''[.(){}$<>]''',
+  ]
+
+[allowlist]
+description = "Paths that are not this project's code"
+paths = [
+  # A separate embedded git repository with its own history and its own
+  # secrets problem; scanning it here reports findings nobody acts on.
+  '''^agrana/''',
+  # Build and tool output. `gitleaks dir` walks the filesystem and does not
+  # honour .gitignore, so these must be named explicitly or the gate reports
+  # findings in .pyc files that are not committable at all.
+  '''(^|/)__pycache__/''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+]

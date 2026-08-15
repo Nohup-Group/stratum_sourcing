@@ -46,12 +46,68 @@ Two things the verifier turned up that were accepted rather than fixed:
 - **Nothing runs this gate but a person.** There is no `.github/workflows` in
   the repo.
 
-- [ ] Commit and push to `main` — Railway redeploys `agent-jobs`, and
-      `entrypoint.sh` applies migration 007 on boot
-- [ ] Confirm the next two cron runs are green:
-      `railway deployment list -p d77684e8-684b-4944-86f3-820b463c30a8 -s 5db361c0-ce97-4acb-9f7f-c0ade57f40c7 -e db5d50a5-7080-45a2-b1b8-7ec46c2270ed`
-- [ ] Check for jobs stranded by the crash loop:
-      `select id, job_type, status, attempts, last_error from agent_jobs where status in ('running','retry') order by updated_at desc limit 20`
+- [x] Pushed as `c55b509`, live as deployment `0429451b`. Boot log 2026-08-13
+      21:00 UTC: `Running upgrade 006 -> 007`, then
+      `agent_jobs_complete dispatched_events=0 failed_jobs=0 processed_jobs=0`.
+- [x] No jobs were stranded by the crash loop — every run since 04:32 UTC
+      claims 0 jobs, so nothing is sitting in `running` or `retry`.
+- [x] Proven in production overnight 2026-08-13/14: 327 jobs started, 327
+      done, 0 failed, no traceback and no container stop. 28 of them were
+      `entity_extractor` jobs writing 178 mentions — the exact path that
+      crashed on the 12th and 13th. Every job ran at `attempt=1`, so nothing
+      was re-claimed after a failure.
 - [ ] Decide whether a job dead-lettering at `attempts = 4` should alert
       anywhere — nothing watches `status = 'failed'` today, so the next poison
       pill will now fail quietly instead of loudly
+
+## Audit of the same defect classes (2026-08-14)
+
+Four contracts in `docs/contracts/`, machine-readable, one per class:
+`column-widths.json` (37 string columns traced to their writers),
+`error-paths.json`, `job-lifecycle.json`, `deploy-hazards.json`.
+39 entries: 4 critical, 9 high, 13 medium, 2 low, plus 11 columns needing a
+width decision. `B-01` and `C-02` are the same defect found independently by
+two analyses; the pre-push verifier reproduced it a third time.
+
+Ordered by what actually bites first:
+
+- [ ] **Rotate the production Postgres password.** `scripts/sourcing_run/import_to_db.py:34`
+      and three sibling scripts hardcode a live DSN pointing at the public
+      Railway TCP proxy (`switchback.proxy.rlwy.net:16120`). It is committed
+      and present in git history across at least 4 commits, so deleting the
+      line does not remove it — rotation is the only fix. Not exploited as far
+      as anything here shows; this is exposure, not a known breach.
+- [x] **`dispatch_outbox_events`, the unfixed twin — FIXED 2026-08-14, not yet
+      pushed.** Per-event try/except, rollback, per-event commit, committed
+      claim, and a real dead-letter at 4 delivery attempts. `EventOutbox.attempts`
+      is now read. Gate: `tests/test_outbox_dispatch.py`. Details in
+      `docs/FIX-PLAN.md` N1.
+- [ ] **The 900s timeout escapes the recovery path** (`app/tasks/agent_jobs.py:14`,
+      B-01/C-02). `except Exception` has not caught `CancelledError` since
+      Python 3.8, so a cycle that overruns exits non-zero exactly like the
+      crash we just fixed. Latent: zero occurrences in any captured production
+      log, but the longest gap between cycle starts is already 1224s against a
+      600s cron period.
+- [ ] **`signal_results.result` is `String(12)` and the code's own vocabulary
+      contains `not_applicable` (14 chars)** (`app/models.py:639` vs
+      `app/services/signal_engine.py:176`). Not external input — a constant
+      that cannot fit its own column. Not yet observed firing; confirm whether
+      `not_applicable` currently reaches the insert at `signal_engine.py:471`.
+- [x] **Migrations on boot — DECIDED and FIXED 2026-08-14, not yet pushed.**
+      Chosen: tolerate-ahead + advisory lock, implemented in `alembic/env.py`.
+      Gate: `tests/test_migration_boot.py`. Details in `docs/FIX-PLAN.md` N5.
+- [ ] **The rule that decision now depends on: migrations must stay
+      backward-compatible with the previous image.** Before, a stale container
+      exited non-zero and never ran its task; now it logs, skips, and *runs*
+      against a schema it does not know. That is the intended trade — a crash
+      loop for a compatibility rule — but it is a rule with no test behind it.
+      A migration that renames or drops a column will now be executed against
+      by every not-yet-rolled-over service instead of stopping it. Widening,
+      adding nullable columns and adding tables are all safe. Decide whether
+      this is enforced by review, by a checklist in the migration template, or
+      not at all.
+- [ ] Answered, no longer a mystery: the `dispatched_events=25 processed_jobs=0`
+      cycles are `watchlist_update_ready` events (`job_queue.py:244`) — a
+      terminal event type with no consumer anywhere in the corpus, enqueued
+      unconditionally on every scoring run. Reproduced: one such event yields
+      exactly `{dispatched_events:1, processed_jobs:0}`.

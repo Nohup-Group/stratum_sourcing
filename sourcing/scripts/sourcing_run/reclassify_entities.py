@@ -14,6 +14,8 @@ migration 006 (which widens the entity_type enum) to have run first.
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import csv
 import json
@@ -21,6 +23,16 @@ import re
 import sys
 
 import triage  # reuse the classifier already validated against this data
+
+
+def dsn() -> str:
+    """Connection string from the environment; never baked into the file."""
+    url = os.environ.get("SOURCING_DSN") or os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit(
+            "set SOURCING_DSN or DATABASE_URL to the target database before running this"
+        )
+    return url.replace("+asyncpg", "")
 
 # triage's exclusion reasons -> the entity_type they should become
 REASON_TO_TYPE = {
@@ -171,10 +183,7 @@ def main() -> None:
         # touching entity_type, so it is safe before migration 006 lands.
         import psycopg
 
-        conn = psycopg.connect(
-            "postgresql://postgres:tiUIjkivXjqdtVCTtaaQyAwXIchMujFt"
-            "@switchback.proxy.rlwy.net:16120/railway"
-        )
+        conn = psycopg.connect(dsn())
         cur = conn.cursor()
         for p in proposals:
             cur.execute(

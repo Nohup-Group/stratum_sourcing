@@ -1,0 +1,316 @@
+{
+  "contract": "job-lifecycle",
+  "version": 1,
+  "corpus_commit": "c55b509",
+  "scope": "app/services/job_queue.py (agent_jobs + event_outbox durable queue), app/services/agent_pipeline.py (run_agent_job_cycle), app/tasks/agent_jobs.py (Railway TASK_MODE=agent-jobs cron, */10 * * * *), app/api/routes.py's POST /tasks/agent-jobs (manual trigger, same code path), app/services/signal_engine.py (signal_scan job body, referenced from process_agent_job), plus every other writer of agent_jobs/event_outbox found by grep.",
+  "state_machine": {
+    "states": ["pending", "running", "retry", "failed", "completed"],
+    "transitions": [
+      {
+        "from": "<insert-default>",
+        "to": "pending",
+        "file": "app/models.py",
+        "line": 445,
+        "excerpt": "status: Mapped[str] = mapped_column(\n        String(20), default=\"pending\", server_default=\"pending\"\n    )",
+        "trigger": "enqueue_agent_job insert (app/services/job_queue.py:81-113); every INSERT that omits status lands here via the column default, not via application code. Not a transition between two live states, listed for completeness of the FSM."
+      },
+      {
+        "from": "pending",
+        "to": "running",
+        "file": "app/services/job_queue.py",
+        "line": 164,
+        "excerpt": "job.status = \"running\"",
+        "trigger": "claim_pending_jobs; row matched by AgentJob.status.in_([\"pending\",\"retry\"]) & available_at <= utc_now() (job_queue.py:150-151), SELECT ... FOR UPDATE SKIP LOCKED (line 158)."
+      },
+      {
+        "from": "retry",
+        "to": "running",
+        "file": "app/services/job_queue.py",
+        "line": 164,
+        "excerpt": "job.status = \"running\"",
+        "trigger": "claim_pending_jobs; same code path as pending->running (status.in_([\"pending\",\"retry\"]) matches both)."
+      },
+      {
+        "from": "running",
+        "to": "running",
+        "file": "app/services/job_queue.py",
+        "line": 154,
+        "excerpt": "| ((AgentJob.status == \"running\") & (AgentJob.leased_at <= stale_cutoff))",
+        "trigger": "claim_pending_jobs stale-lease reclaim: a job already 'running' whose leased_at is older than STALE_LEASE_MINUTES=45 (line 136) is re-selected, re-leased (new leased_at/lease_owner, line 165-166) and attempts is incremented again (line 167) without ever passing through mark_job_failed. Self-loop, not a state change, but it is the mechanism that lets a job re-enter 'running' after an abandoned lease."
+      },
+      {
+        "from": "running",
+        "to": "completed",
+        "file": "app/services/agent_pipeline.py",
+        "line": 752,
+        "excerpt": "job.status = \"completed\"",
+        "trigger": "run_agent_job_cycle, success path of process_agent_job(db, job)."
+      },
+      {
+        "from": "running",
+        "to": "retry",
+        "file": "app/services/job_queue.py",
+        "line": 181,
+        "excerpt": "job.status = \"retry\" if retry else \"failed\"",
+        "trigger": "mark_job_failed(db, job, error=..., retry=attempt < 4) called from agent_pipeline.py:764 when the captured pre-attempt value 'attempt' (job.attempts read before processing, line 740) is < 4."
+      },
+      {
+        "from": "running",
+        "to": "failed",
+        "file": "app/services/job_queue.py",
+        "line": 181,
+        "excerpt": "job.status = \"retry\" if retry else \"failed\"",
+        "trigger": "mark_job_failed(db, job, error=..., retry=attempt < 4) when attempt >= 4 (the 4th claim of this job hits a real Exception in process_agent_job)."
+      }
+    ],
+    "terminal_states": ["completed", "failed"],
+    "unreachable_or_absorbing": [
+      {
+        "state": "completed",
+        "kind": "true_terminal",
+        "evidence": "Exhaustive grep of 'AgentJob.status =' / '.status = \"' assignments across app/ and scripts/ finds exactly 3 writers total: job_queue.py:164 (running), job_queue.py:181 (retry/failed), agent_pipeline.py:752 (completed). Nothing ever reads a 'completed' row back into a different status.",
+        "note": "Correctly terminal by design; not a defect."
+      },
+      {
+        "state": "failed",
+        "kind": "true_terminal_but_unmonitored",
+        "evidence": "Same exhaustive grep as above; nothing transitions a 'failed' job elsewhere, and claim_pending_jobs' WHERE clause (job_queue.py:148-155) excludes status='failed' from both the pending/retry branch and the stale-running branch, so it can never be reclaimed either. See finding C-06: nothing in the corpus reads status='failed'.",
+        "note": "Terminal by design (correct dead-letter behavior), but see C-06 for why reaching it is currently silent."
+      },
+      {
+        "state": "running",
+        "kind": "unintended_absorbing_loop_under_a_specific_condition",
+        "evidence": "See finding C-02. When a job's processing is interrupted by the outer asyncio.wait_for(..., timeout=900) (app/tasks/agent_jobs.py:14) via asyncio.CancelledError, the per-job 'except Exception as error:' (app/services/agent_pipeline.py:757) does not catch it (CancelledError is a BaseException subclass, not an Exception subclass, since Python 3.8; this project runs Python 3.12 per the Dockerfile). mark_job_failed is never called, so the job never reaches 'retry' or 'failed' through this path. It stays 'running' until the 45-minute stale-lease reclaim (job_queue.py:136,154) puts it back through 'running' -> 'running', where it can time out again if the same job (e.g. a full-depth signal_scan whose total sequential LLM-batch time exceeds 900s) is reclaimed and retried. Because the attempts<4 dead-letter check only runs inside the except-Exception branch (agent_pipeline.py:764), a job stuck on this loop can accumulate attempts indefinitely via stale-lease reclaims without ever being evaluated against the dead-letter threshold.",
+        "note": "This is a defect, not an intended terminal state. See C-02."
+      }
+    ]
+  },
+  "coverage": {
+    "writers_of_agent_jobs_found": 5,
+    "writers_of_agent_jobs_list": [
+      "enqueue_agent_job (app/services/job_queue.py:81-113) — INSERT ... ON CONFLICT DO NOTHING(job_type,external_ref); 7 call sites: app/api/routes.py:71, app/api/routes.py:198, app/tasks/notion_control_plane.py:33, app/services/job_queue.py:197/212/223/234 (dispatch_outbox_events), app/services/signal_engine.py:601 (enqueue_signal_scan)",
+      "claim_pending_jobs (app/services/job_queue.py:139-169) — UPDATE status/leased_at/lease_owner/attempts",
+      "mark_job_failed (app/services/job_queue.py:172-185) — UPDATE status/last_error/available_at/leased_at/lease_owner",
+      "run_agent_job_cycle inline (app/services/agent_pipeline.py:751-754) — UPDATE result/status/leased_at/lease_owner on success",
+      "scripts/sourcing_run/merge_duplicate_entities.py:38 — raw psycopg DELETE FROM agent_jobs WHERE entity_id = %s, run manually/out-of-band, not through the ORM or job_queue.py (see C-08)"
+    ],
+    "writers_of_event_outbox_found": 3,
+    "writers_of_event_outbox_list": [
+      "enqueue_event (app/services/job_queue.py:52-78) — INSERT ... ON CONFLICT DO NOTHING(dedup_key); 5 call sites: app/pipeline/orchestrator.py:330, app/api/routes.py:184, app/services/signal_engine.py:533, app/services/agent_pipeline.py:365/507/515/661 (agent_pipeline.py has 4 call sites)",
+      "claim_pending_events (app/services/job_queue.py:116-133) — UPDATE status='processing', attempts+=1 (flush only, no independent commit — see C-01)",
+      "dispatch_outbox_events (app/services/job_queue.py:188-254) — UPDATE status='dispatched'|'ignored' (flush only, same shared transaction as claim_pending_jobs)"
+    ],
+    "files_read": [
+      "app/services/job_queue.py (full, 254 lines)",
+      "app/services/agent_pipeline.py (full, 775 lines)",
+      "app/tasks/agent_jobs.py (full, 25 lines)",
+      "app/models.py (targeted: AgentJob, EventOutbox, IntegrationState class definitions + full-file grep for .status/.attempts writers)",
+      "app/api/routes.py (lines 1-270, full route file)",
+      "app/services/signal_engine.py (header 1-60, process_signal_scan_job + enqueue_signal_scan in full, lines 380-609)",
+      "app/tasks/notion_control_plane.py (lines 1-45, full)",
+      "app/pipeline/orchestrator.py (lines 300-345, the enqueue_event call site)",
+      "app/database.py (full, 36 lines)",
+      "app/services/ops_client.py (lines 1-112, full)",
+      "app/config.py (targeted: signal-scan/watchlist settings block)",
+      "app/integrations/slack_bot.py (header + function list, grep-confirmed no AgentJob reference)",
+      "app/api/console.py (grep-confirmed 0 AgentJob.status references; only SignalScan.status)",
+      "railway.toml (full)",
+      "entrypoint.sh (full)",
+      "Dockerfile (lines 1-60)",
+      "docs/DECISIONS-PENDING.md (full, 62 lines — production incident log for the fixed motivating bug, including a still-open item about status='failed' monitoring)",
+      "docs/contracts/error-paths.json + error-paths.md (full — a sibling audit contract found already present, untracked, in this corpus at docs/contracts/; covers exception-handling shape across all 6 TASK_MODE entrypoints and independently derived the same asyncio.CancelledError/BaseException gap documented here as C-02, as its finding B-01)",
+      "scripts/sourcing_run/merge_duplicate_entities.py (lines 1-60: docstring + DEPENDENTS delete list)",
+      "tests/test_agent_job_cycle.py (full, 218 lines)",
+      "tests/conftest.py (full, 21 lines)",
+      "alembic/versions/004_control_plane_foundation.py (lines 150-270: event_outbox + agent_jobs DDL, including both UniqueConstraints)"
+    ],
+    "not_read": [
+      {"path": "app/pipeline/analyzer.py, prefilter.py, deduplicator.py, differ.py, scorer.py, tracker.py", "reason": "part of the source-ingestion pipeline (scan cadence), not the agent-job/event-outbox lifecycle this contract targets; orchestrator.py:330 (the one enqueue_event call site inside this package) was read"},
+      {"path": "app/sources/*.py (5 files)", "reason": "fetchers for the ingestion side; do not touch AgentJob or EventOutbox (confirmed absent from the full-repo agent_job/event_outbox grep)"},
+      {"path": "app/tasks/cadence_scan.py, morning_digest.py, nightly_scan.py, notion_export.py", "reason": "not part of the agent-jobs cron path; grep-confirmed 0 AgentJob/EventOutbox references. Already read in full by the sibling error-paths.json contract present in this corpus (see files_read note above) for their own timeout-handling defects, which are out of this contract's scope"},
+      {"path": "app/integrations/notion_sync.py, app/services/notion_control.py", "reason": "grep-confirmed 0 AgentJob/EventOutbox references; not part of the job/event queue"},
+      {"path": "app/schemas.py, app/main.py, app/api/deps.py", "reason": "not referenced by any agent_jobs/event_outbox writer or reader found via grep"},
+      {"path": "alembic/versions/001,002,003,005,006,007", "reason": "005_signal_engine.py grepped only (adds signal_scans.agent_job_id FK, no agent_jobs/event_outbox column change); 001-003,006,007 not opened — 007 (role_hint widen) is unrelated to the job/event state machine and is independently verified by docs/DECISIONS-PENDING.md + tests/test_agent_job_cycle.py"},
+      {"path": "scripts/import_scan_data.py, seed_demo_fixtures.py, seed_signals.py, sourcing_run/*.py other than merge_duplicate_entities.py (6 files)", "reason": "manually-invoked maintenance scripts; grep-confirmed only merge_duplicate_entities.py touches agent_jobs/event_outbox"},
+      {"path": "tests/test_signal_scoring.py", "reason": "pure-function scoring unit test, unrelated to job/event state transitions"}
+    ]
+  },
+  "findings": [
+    {
+      "id": "C-01",
+      "class": "C",
+      "subclass": "lost_work",
+      "file": "app/services/job_queue.py",
+      "line": 192,
+      "symbol": "dispatch_outbox_events",
+      "excerpt": "    for event in events:\n        payload = event.payload or {}\n        created_job = None\n\n        if event.event_type == \"snapshot_ready\":",
+      "failure_scenario": "Unlike the per-job loop in run_agent_job_cycle (which the class-C fix gave a try/except + rollback + per-job commit, agent_pipeline.py:749-768), the per-event loop in dispatch_outbox_events (lines 192-253) has no try/except around any branch and dispatch_outbox_events itself never commits (only db.flush() at line 253) -- the whole batch (claim_pending_events + every event's dispatch) is committed once, together with claim_pending_jobs' work, at agent_pipeline.py:731. If handling ANY one event in the batch raises (e.g. a payload shape a branch does not expect, or a DB constraint violation such as an entity_id/source_id FK pointing at a row deleted since the event was enqueued), the exception propagates out of dispatch_outbox_events, out of run_agent_job_cycle (which has no try/except around the dispatched = await dispatch_outbox_events(...) call at line 725), and crashes the process the same way the pre-fix motivating bug did -- except claim_pending_jobs never even runs this cycle, so unrelated already-pending agent_jobs also do not get processed. Because nothing commits before the exception, EVERY event claimed in that batch (up to limit=25) reverts to status='pending', attempts=0 as if never touched -- including events whose job WAS already successfully created in memory this cycle (their created row is discarded along with everything else). If the poison condition is deterministic (a payload shape or a stale FK that will not resolve itself), this repeats every 10-minute cron tick indefinitely: the same batch is reclaimed, the same event poisons it, and NO event.attempts-based circuit breaker exists to stop it (see C-04). Empirically reproduced against the scratch DB (see gate) with a synthetic entity_candidate event whose payload is a JSON array instead of an object (job_queue.py:209 calls payload.get(\"entity_type\"), and list has no .get): the whole cycle raised AttributeError, and a second, healthy snapshot_ready event queued in the SAME batch reverted to status='pending', attempts=0, with 0 agent_jobs rows created -- its otherwise-successful job creation was discarded along with the poisoned event's failure.",
+      "severity": "critical",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed two EventOutbox rows in one batch: one entity_candidate with a non-dict payload (e.g. payload=[...]), one snapshot_ready with a well-formed payload. Call run_agent_job_cycle(limit=25) and assert it raises. Then, from a fresh session, assert: (a) both events are still status='pending' (not stuck at 'processing'), and (b) 0 AgentJob rows exist -- proving the healthy event's job creation was discarded by the poisoned event in the same uncommitted batch. This currently reproduces exactly as described (see probe script referenced in this contract's .md companion); the desired behavior (a fix, not performed here) would isolate each event's dispatch the way the per-job loop isolates each job."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-02",
+      "class": "C",
+      "subclass": "never_dead_letters",
+      "file": "app/services/agent_pipeline.py",
+      "line": 757,
+      "symbol": "run_agent_job_cycle",
+      "excerpt": "            except Exception as error:",
+      "failure_scenario": "app/tasks/agent_jobs.py:14 wraps the ENTIRE cycle (dispatch + up to `limit` jobs processed sequentially) in asyncio.wait_for(run_agent_job_cycle(limit=limit), timeout=900), with no try/except anywhere in that file. A signal_scan job (process_signal_scan_job, app/services/signal_engine.py:389-462) can run up to len(signals)/batch_size sequential LLM calls -- batch_size defaults to 25 (app/config.py:97), a full scan covers 200 signals (signal_engine.py module docstring, lines 3-4) => up to 8 sequential batches, each individually budgeted timeout_seconds=480 (signal_engine.py:445, inside run_ops_json_prompt -> httpx.AsyncClient(timeout=timeout_seconds+5), app/services/ops_client.py:70). Even without any single batch hitting its own 480s ceiling, 8 batches averaging just over 112s each already exceeds the shared 900s cycle budget; a full scan's worst case (8 x 480s = 3840s) blows past it by more than 4x. When the 900s deadline fires mid-job, asyncio.wait_for cancels the underlying coroutine: a real asyncio.CancelledError is raised at whatever await point run_agent_job_cycle is suspended on. Since Python 3.8, CancelledError is a BaseException subclass, not an Exception subclass (this project runs Python 3.12, per the Dockerfile's `FROM python:3.12-bookworm`), so it is NOT caught by `except Exception as error:` at agent_pipeline.py:757 -- nor by process_signal_scan_job's own inner per-batch `except Exception:` at signal_engine.py:449, for the same reason, if cancellation lands there instead. The job in flight never reaches mark_job_failed; it is left status='running' with a live lease (claimed at agent_pipeline.py:739-748 and durably committed at line 731 before the loop began) until the 45-minute stale-lease reclaim (STALE_LEASE_MINUTES, job_queue.py:136,154) makes it eligible for re-claim. If the same job type reliably needs more than 900s (a structural property of the batch/timeout math above, not a rare edge case), it will time out on every subsequent claim too, cycling running -> (45+ min later) running -> timeout -> running forever, WITHOUT ever passing through the attempts<4 dead-letter decision at agent_pipeline.py:764 -- because that decision only runs inside the except-Exception branch this path never reaches. Corroborated independently: a sibling audit already present in this corpus, docs/contracts/error-paths.json, finding B-01 (untracked file, created during this same investigation window), traces the identical mechanism via the same citations and rates it 'critical' / 'confidence: traced'.",
+      "severity": "critical",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed an AgentJob(job_type='signal_scan') with its Entity/Signal rows. Monkeypatch signal_engine.run_ops_json_prompt to `await asyncio.sleep(large_number)`. Call `await asyncio.wait_for(agent_pipeline.run_agent_job_cycle(limit=5, lease_owner='test'), timeout=<small>)` and assert it raises (proving cancellation is exercised mid-job). Then assert the job's row ends up with status in ('retry','failed'), last_error set, and lease_owner is None -- this currently FAILS: status stays 'running' and lease_owner remains set, because CancelledError skips the except-Exception block entirely."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-03",
+      "class": "C",
+      "subclass": "duplicate_work",
+      "file": "app/services/job_queue.py",
+      "line": 154,
+      "symbol": "claim_pending_jobs",
+      "excerpt": "            | ((AgentJob.status == \"running\") & (AgentJob.leased_at <= stale_cutoff))",
+      "failure_scenario": "The stale-lease reclaim is purely time-based (leased_at <= utc_now() - 45min) with no ownership/fencing check: it does not verify the original worker actually died, only that its lease is old. with_for_update(skip_locked=True) (line 158) only protects the CLAIM step itself against two SIMULTANEOUS claim queries racing on the same row; it provides no protection once a claiming transaction commits (which it now does immediately, at agent_pipeline.py:731, as part of the class-C fix) -- the row lock is released at that point, and the job is fully unlocked for anyone to see and reclaim once its lease looks stale. Neither the success path (job.status = \"completed\" at agent_pipeline.py:752) nor mark_job_failed (job_queue.py:172-185) checks that job.lease_owner/leased_at still match what this worker set when it claimed the job before writing -- there is no compare-and-swap. So: if a worker survives past STALE_LEASE_MINUTES=45 while still genuinely processing (its own 900s asyncio.wait_for watchdog would ordinarily have cancelled it well before 45 minutes -- see C-02 for why that cancellation does NOT reliably terminate the coroutine's DB-visible side effects, and any non-cooperative hang, e.g. a stuck asyncpg connection or blocking call outside asyncio's cancellation reach, could keep the process itself alive past 45 minutes even if the coroutine 'should' have been cancelled), a second worker's claim_pending_jobs will reclaim and reprocess the same job concurrently. Both workers can then write to the same AgentJob row and to whatever domain rows process_agent_job touches (Entity, EntityMention, EntityScore, SignalScan, ...) without either being aware of the other; whichever commits last silently overwrites the other's result.",
+      "severity": "high",
+      "gate": {
+        "kind": "test",
+        "assert": "Claim a job with lease_owner='worker-a', then manually backdate its leased_at past STALE_LEASE_MINUTES while leaving worker-a's in-process AgentJob object referencing the original lease. Call claim_pending_jobs(lease_owner='worker-b') and confirm it reclaims the same row (attempts increments a second time, lease_owner becomes 'worker-b'). Then let worker-a's original (stale) in-memory job object proceed to job.status='completed' and commit; assert this either fails (a fencing check exists) or silently succeeds and clobbers worker-b's lease_owner/attempts (no fencing exists, current behavior)."
+      },
+      "confidence": "inferred"
+    },
+    {
+      "id": "C-04",
+      "class": "C",
+      "subclass": "stuck_state",
+      "file": "app/services/job_queue.py",
+      "line": 116,
+      "symbol": "claim_pending_events",
+      "excerpt": "        .where(\n            EventOutbox.status == \"pending\",\n            EventOutbox.available_at <= utc_now(),\n        )",
+      "failure_scenario": "agent_jobs has an explicit stale-lease reclaim for status='running' rows (STALE_LEASE_MINUTES, job_queue.py:136,154). event_outbox has no analogous mechanism: claim_pending_events only ever selects status='pending' (line 120); nothing in the corpus ever re-selects status='processing'. Under the CURRENT code this has no live trigger, because claim_pending_events (sets 'processing') and dispatch_outbox_events (sets 'dispatched'/'ignored') execute inside the same uncommitted transaction that commits once, together, at agent_pipeline.py:731 -- so 'processing' as a durably-persisted status does not currently occur (per C-01, an exception anywhere in that shared transaction discards the whole batch back to its pre-claim state, not to a stuck 'processing' state). The gap is therefore structural/latent rather than actively triggered today: EventOutbox.attempts IS incremented every claim (job_queue.py:131) but is READ NOWHERE in the corpus (grep of '.attempts' across app/, scripts/, tests/ finds only the two increment sites and the mark_job_failed/test-assertion usages, all on AgentJob, never EventOutbox) -- so events have no backoff and no dead-letter concept at all, in contrast to agent_jobs' attempts<4 rule. If a future change ever splits claim_pending_events/dispatch_outbox_events into separate transactions (a natural refactor once C-01 is addressed, since a healthy event should not need to revert just because a sibling event in the same batch poisoned it), an event left at 'processing' by that refactor would have no reclaim path and no way to ever surface as failed.",
+      "severity": "medium",
+      "gate": {
+        "kind": "query",
+        "assert": "select count(*) from event_outbox where status = 'processing' and updated_at < now() - interval '1 hour'; expected to always return 0 given current code (would indicate the shared-transaction assumption in C-01/C-04 has already been broken by some other change). Also: grep app/ for 'EventOutbox' combined with '.attempts' anywhere other than job_queue.py's claim_pending_events increment -- expected to find zero readers, confirming events have no dead-letter mechanism."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-05",
+      "class": "C",
+      "subclass": "backoff_wrong",
+      "file": "app/services/job_queue.py",
+      "line": 167,
+      "symbol": "claim_pending_jobs",
+      "excerpt": "        job.attempts += 1",
+      "failure_scenario": "attempts is incremented on EVERY claim (job_queue.py:167), including stale-lease reclaims of a job whose previous worker never got the chance to fail it cleanly (container OOM/redeploy mid-job, or the C-02 cancellation path). The attempts<4 dead-letter budget (agent_pipeline.py:764, retry=attempt<4) does not distinguish 'this job's own logic failed 4 times' from 'this job's lease was lost 4 times for reasons unrelated to the job'. A job that repeatedly loses its lease to infrastructure churn (deploys, restarts, or C-02's cancellation loop) can therefore be dead-lettered (status='failed') on the very FIRST genuine code-level exception it ever hits, having 'used up' its retry budget on unrelated lease losses -- the opposite of the intended graduated backoff (5/10/15/20 minute spacing meant to give a transient real failure room to self-resolve).",
+      "severity": "medium",
+      "gate": {
+        "kind": "test",
+        "assert": "Claim a job 4 times via 4 separate stale-lease reclaims (backdating leased_at each time, never letting it fail or complete) so attempts reaches 4 without mark_job_failed ever running. Then let process_agent_job raise a genuine exception on the job's 4th active run. Assert job.status == 'retry' (there should be retry budget left, since 0 of the 4 attempts were real logic failures) -- this currently FAILS: retry = attempt < 4 evaluates to False (attempt is already 4), so the job goes straight to 'failed' on its first real failure."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-06",
+      "class": "C",
+      "subclass": "silent_failure",
+      "file": "app/services/job_queue.py",
+      "line": 181,
+      "symbol": "mark_job_failed",
+      "excerpt": "    job.status = \"retry\" if retry else \"failed\"",
+      "failure_scenario": "No code in the corpus reads AgentJob.status == 'failed'. Exhaustive grep of app/api/console.py, app/api/routes.py, app/integrations/slack_bot.py, app/integrations/notion_sync.py, app/services/notion_control.py and every app/tasks/*.py finds zero references to AgentJob at all outside job_queue.py, agent_pipeline.py, signal_engine.py, and the enqueue call sites already covered in coverage.writers_of_agent_jobs_list -- none of them filter or branch on status. A dead-lettered job (the CORRECT, intended end state for a genuinely broken job/payload) is therefore invisible: no API surface, no console dashboard row, no Slack/Notion notification. This is already tracked as an explicit open item in this same repo: docs/DECISIONS-PENDING.md:59-61 ('Decide whether a job dead-lettering at attempts = 4 should alert anywhere -- nothing watches status = 'failed' today, so the next poison pill will now fail quietly instead of loudly'), written by whoever landed the class-C fix as a known, deliberately-deferred gap.",
+      "severity": "high",
+      "gate": {
+        "kind": "query",
+        "assert": "grep -rn \"status.*==.*'failed'\\|status == \\\"failed\\\"\" app/ (AgentJob context) -- expected 0 matches today; the gate is satisfied once any of console.py, routes.py, or a notifier queries agent_jobs where status='failed' and surfaces it somewhere a human or alert channel will see."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-07",
+      "class": "C",
+      "subclass": "silent_failure",
+      "file": "app/services/job_queue.py",
+      "line": 244,
+      "symbol": "dispatch_outbox_events",
+      "excerpt": "        elif event.event_type == \"watchlist_update_ready\":\n            event.status = \"dispatched\"\n            dispatched += 1\n            continue",
+      "failure_scenario": "watchlist_update_ready is the only event_type handled by dispatch_outbox_events that creates NO agent_job (every other branch -- snapshot_ready, entity_candidate, entity_profile_ready, source_expansion_candidate -- calls enqueue_agent_job). It is enqueued unconditionally on every entity_scorer run (agent_pipeline.py:661-667, inside process_entity_scorer_job, which itself has no cooldown/skip check unlike process_research_job's RESEARCH_COOLDOWN_DAYS) and again on every completed signal_scan (signal_engine.py:533-539). Grep of 'watchlist_update_ready' across app/ finds only these two producers and this one terminal consumer branch -- no code anywhere reads a dispatched watchlist_update_ready event or acts on it. This directly explains the observed production log pattern `dispatched_events=N failed_jobs=0 processed_jobs=0` sustained for hours: dispatch_outbox_events legitimately counts these as 'dispatched' (line 246) while creating zero claimable work, and since they carry no cap or cooldown, a backlog of them (one per scoring/scan run) can consume the entire per-cycle event budget (limit=25 by default, agent_pipeline.py's run_agent_job_cycle default) for many consecutive 10-minute cycles while producing nothing for claim_pending_jobs to pick up. Empirically reproduced against the scratch DB: a single watchlist_update_ready event run through run_agent_job_cycle(limit=25) returns {'dispatched_events': 1, 'processed_jobs': 0, 'failed_jobs': 0} -- see this contract's answers.dispatched_events_without_processed_jobs and the .md companion for the exact repro.",
+      "severity": "medium",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed one EventOutbox(event_type='watchlist_update_ready', status='pending'). Call run_agent_job_cycle(limit=25) and assert the result equals {'dispatched_events': 1, 'processed_jobs': 0, 'failed_jobs': 0} -- reproducing the exact shape of the observed anomaly from a single, well-formed, non-error event."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "C-08",
+      "class": "C",
+      "subclass": "silent_failure",
+      "file": "scripts/sourcing_run/merge_duplicate_entities.py",
+      "line": 38,
+      "symbol": "DEPENDENTS",
+      "excerpt": "    (\"agent_jobs\", \"entity_id = %s\"),",
+      "failure_scenario": "This operator-run maintenance script (`--dry-run`/`--commit`, connects directly via psycopg to the production DSN hardcoded at line 26) deletes agent_jobs and event_outbox rows by entity_id as part of merging duplicate Entity rows, entirely outside the ORM/job_queue.py. If it runs while a cron cycle currently holds a live lease on one of the deleted agent_jobs rows for the same entity, that job's row can disappear mid-cycle. On the failure path, agent_pipeline.py:763 reloads the job via `job = await db.get(AgentJob, job_id)` after the rollback and passes it directly to mark_job_failed (line 764), which immediately dereferences job.attempts (job_queue.py:179) with no None-check. A concurrent delete here would make db.get return None, and mark_job_failed(db, None, ...) would raise AttributeError -- inside the except-Exception block itself, with no further try/except around it, aborting run_agent_job_cycle mid-loop (skipping the remaining queued jobs in that cycle and the final db.commit()/return at agent_pipeline.py:770-775) the same way C-01/C-02 do.",
+      "severity": "medium",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed an AgentJob row and claim it (status='running'). From a second connection, DELETE the row (simulating the maintenance script running concurrently). Then, in the original session, force the job to fail and call mark_job_failed(db, job, error='x', retry=True) with job re-fetched via db.get (now None). Assert this either raises a controlled, contained error (desired) or an unhandled AttributeError that escapes run_agent_job_cycle (current code path, untested)."
+      },
+      "confidence": "traced"
+    }
+  ],
+  "answers": {
+    "dispatched_events_without_processed_jobs": {
+      "answer": "Jobs created by dispatch_outbox_events ARE claimable, and normally ARE claimed and processed, in the SAME cycle: dispatch_outbox_events and claim_pending_jobs run inside one shared, uncommitted AsyncSession/transaction with no commit between them (agent_pipeline.py:724-731: `dispatched = await dispatch_outbox_events(db, limit=limit)` then `jobs = await claim_pending_jobs(db, limit=limit, ...)` then `await db.commit()`), so Postgres always sees a transaction's own uncommitted writes -- a job INSERTed by enqueue_agent_job (called from dispatch_outbox_events) is visible to the SELECT inside claim_pending_jobs that runs immediately after in the same transaction. enqueue_agent_job defaults available_at to utc_now() at insert time (job_queue.py:101), which is always <= the later utc_now() evaluated inside claim_pending_jobs (job_queue.py:151), since dispatch runs strictly before claim in the same coroutine. This was verified empirically against the scratch DB: a snapshot_ready event dispatched through run_agent_job_cycle produced {'dispatched_events': 1, 'processed_jobs': 1, 'failed_jobs': 0} in one call. HOWEVER, the specific production log pattern (dispatched_events=25/12, processed_jobs=0, sustained for hours, on BOTH the pre-fix and post-fix builds) is fully explained by a different mechanism, independent of same-cycle visibility: the watchlist_update_ready event_type (job_queue.py:244-247) is dispatched (incrementing the dispatched_events counter) WITHOUT ever calling enqueue_agent_job -- it is a terminal event type with no consumer anywhere in the corpus (see finding C-07). Reproduced empirically: a single watchlist_update_ready event run through run_agent_job_cycle(limit=25) returns {'dispatched_events': 1, 'processed_jobs': 0, 'failed_jobs': 0} -- the exact shape of the observed anomaly, with zero exceptions and zero crash-loop involved. Since watchlist_update_ready is enqueued unconditionally on every entity_scorer run (agent_pipeline.py:661-667, no cooldown gate) and every completed signal_scan (signal_engine.py:533-539), a backlog of these accumulating faster than anything else needing dispatch is sufficient to produce many consecutive cycles of dispatched_events>0, processed_jobs=0 -- matching 'for hours' at the default limit=25-per-cycle budget. I cannot confirm from this corpus alone (no production DB access, no captured event_outbox row contents for the specific 2026-08-13 05:00 cycle) that watchlist_update_ready backlog was LITERALLY what those specific log lines contained, as opposed to some mix of watchlist_update_ready events and job-creating events whose enqueue_agent_job call happened to lose the on_conflict_do_nothing race on external_ref (which also does not increment the counter's job-creation path but is architecturally distinct and far less likely given external_ref is derived from a freshly-claimed event id, which cannot collide). What resolves the specific-instance question: a query against the production event_outbox table filtered to created_at/updated_at around 2026-08-13 05:00 and 2026-08-12 04:30-07:30, grouped by event_type, to see what fraction were watchlist_update_ready.",
+      "citations": [
+        "app/services/agent_pipeline.py:724-731",
+        "app/services/job_queue.py:81-113 (enqueue_agent_job, available_at default)",
+        "app/services/job_queue.py:139-169 (claim_pending_jobs)",
+        "app/services/job_queue.py:244-247 (watchlist_update_ready terminal branch, no job created)",
+        "app/services/agent_pipeline.py:661-667 (unconditional watchlist_update_ready enqueue in process_entity_scorer_job)",
+        "app/services/signal_engine.py:533-539 (watchlist_update_ready enqueue on signal_scan completion)",
+        "empirical: probe_q6.py against TEST_DATABASE_URL=postgresql+asyncpg://erickpg@localhost:5432/stratum_sourcing_test (throwaway script, not part of the repo) -- Case A (snapshot_ready) => {'dispatched_events': 1, 'processed_jobs': 1, 'failed_jobs': 0}; Case B (watchlist_update_ready) => {'dispatched_events': 1, 'processed_jobs': 0, 'failed_jobs': 0}"
+      ],
+      "confidence": "traced"
+    }
+  },
+  "open_questions": [
+    {
+      "id": "Q-01",
+      "topic": "Is watchlist_update_ready meant to have a consumer that was never built, or is it intentionally a terminal bookkeeping marker?",
+      "description": "watchlist_update_ready is enqueued unconditionally by two producers (agent_pipeline.py:661-667, signal_engine.py:533-539) and consumed by exactly one branch in dispatch_outbox_events (job_queue.py:244-247) that does nothing but mark it 'dispatched'. No downstream code (console, Slack, Notion, or any other agent_jobs job_type) reads these events or the fact that they were dispatched. If this is intentional (e.g. the WatchTarget row it should update is already updated synchronously by the producer itself, per agent_pipeline.py:658-659/signal_engine.py:520-521, making the event purely a historical marker), the finding is cosmetic. If a consumer (e.g. a Slack/console notification on watchlist changes) was planned but never wired up, C-07's wasted dispatch budget is a symptom of missing functionality, not just wasted cron cycles.",
+      "options": [
+        "A: intentional terminal marker -- leave as-is, but consider excluding it from the same claim_pending_events budget as job-creating events (or dropping the dispatch step for it entirely, since it does not need FOR UPDATE SKIP LOCKED or an agent_job to accomplish 'mark this row seen')",
+        "B: a missing consumer -- something (notification, console badge, export) should read dispatched watchlist_update_ready events and currently does not"
+      ],
+      "evidence": "app/services/job_queue.py:244-247; app/services/agent_pipeline.py:658-667; app/services/signal_engine.py:512-539; grep of 'watchlist_update_ready' across app/ finds no third reference."
+    },
+    {
+      "id": "Q-02",
+      "topic": "Should dispatch_outbox_events get the same per-item isolation the job loop already has?",
+      "description": "The class-C fix gave run_agent_job_cycle's per-JOB loop a try/except + rollback + per-job commit (agent_pipeline.py:749-768) specifically so one poisoned job cannot take the whole cycle down. dispatch_outbox_events' per-EVENT loop (job_queue.py:192-253) never received the equivalent treatment: no try/except, no per-event commit, and it runs BEFORE claim_pending_jobs in the same shared transaction, so a single bad event currently blocks job claiming entirely for that cycle (C-01) with no attempts-based circuit breaker (C-04). This is the sibling of the original motivating bug, still open.",
+      "options": [
+        "A: give dispatch_outbox_events the same shape as the job loop -- per-event try/except, per-event commit, so one bad event only affects itself",
+        "B: leave the shared-transaction-and-crash design as-is if a crash-and-restart-in-10-minutes response to a poisoned event is considered acceptable, given events are cheaper/rarer to poison than jobs (no third-party payload input observed reaching entity_candidate's payload.get() call today -- see C-01's synthetic reproduction for what WOULD trigger it)"
+      ],
+      "evidence": "app/services/job_queue.py:188-254 (dispatch_outbox_events, no try/except); app/services/agent_pipeline.py:749-768 (job loop's isolation, for contrast); C-01, C-04."
+    },
+    {
+      "id": "Q-03",
+      "topic": "Should the 900s cycle-level timeout become per-job instead of per-cycle?",
+      "description": "app/tasks/agent_jobs.py:14 budgets 900s for the WHOLE cycle (dispatch + up to `limit` jobs run sequentially), not per job. A single slow signal_scan job can consume the entire budget and starve every other already-claimed job in that cycle (they simply never get their turn in the for-loop before cancellation), in addition to the C-02 never-dead-letters defect for the slow job itself. This is the same underlying tension the sibling error-paths.json contract raises in its own Q-02 (the 6 TASK_MODE entrypoints have 3 different, inconsistent timeout-swallowing policies) -- this question is the agent_jobs-specific instance of that broader one.",
+      "options": [
+        "A: keep one shared 900s cycle budget, but wrap the try/except in agent_pipeline.py:757 to also catch asyncio.CancelledError so at minimum mark_job_failed always runs before the cancellation is allowed to propagate",
+        "B: give each job its own timeout (e.g. via asyncio.wait_for around process_agent_job(db, job) specifically) so one slow job cannot starve the rest of the batch, independent of the cycle-level budget",
+        "C: reduce batch_size / cap batches-per-job so a single job's worst case cannot exceed the cycle budget by construction"
+      ],
+      "evidence": "app/tasks/agent_jobs.py:14; app/services/agent_pipeline.py:735-768 (sequential for-loop, one shared session/budget); app/services/signal_engine.py:428-456 (up to 8 sequential batches per job); docs/contracts/error-paths.json open_questions Q-02 (broader, sibling framing of the same tension across all 6 task entrypoints)."
+    }
+  ]
+}

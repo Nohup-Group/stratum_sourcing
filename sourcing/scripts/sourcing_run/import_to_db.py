@@ -13,6 +13,8 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import glob
 import json
@@ -31,7 +33,18 @@ from score_math import rescore
 from build_shortlist import load_scored as load_scored_ranked
 from build_shortlist import norm as shortlist_norm
 
-DSN = "postgresql://postgres:tiUIjkivXjqdtVCTtaaQyAwXIchMujFt@switchback.proxy.rlwy.net:16120/railway"
+def _dsn() -> str:
+    """Connection string from the environment; never baked into the file.
+
+    DATABASE_URL is the app's SQLAlchemy URL (postgresql+asyncpg://...), which
+    psycopg cannot parse, so the driver marker is stripped.
+    """
+    url = os.environ.get("SOURCING_DSN") or os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit(
+            "set SOURCING_DSN or DATABASE_URL to the target database before running this"
+        )
+    return url.replace("+asyncpg", "")
 PROVENANCE = "stratum3-manual-scan-2026-07-30"
 
 VERTICAL_TO_TAG = {
@@ -122,7 +135,7 @@ def main() -> None:
     scored = load_scored()
     now = datetime.now(timezone.utc)
 
-    conn = psycopg.connect(DSN)
+    conn = psycopg.connect(_dsn())
     cur = conn.cursor()
 
     # Signal library lookup for per-signal evidence rows.

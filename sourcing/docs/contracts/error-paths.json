@@ -1,0 +1,300 @@
+{
+  "contract": "error-paths",
+  "version": 1,
+  "corpus_commit": "c55b509cf68e640ba1b92548977c90f60e94ca0b",
+  "motivating_bug_status": {
+    "location": "app/services/agent_pipeline.py:757 (run_agent_job_cycle, except Exception as error:)",
+    "verified_fixed": true,
+    "evidence": [
+      "app/services/agent_pipeline.py:761 'await db.rollback()' now runs before any further session use, on the line immediately after the except.",
+      "app/services/agent_pipeline.py:736-740 job_id and job_type/attempt are captured as plain values before the try block, and the job row is re-fetched (db.get) after the rollback rather than reading the pre-rollback expired object.",
+      "app/services/agent_pipeline.py:764 mark_job_failed(db, job, ...) now runs after the rollback+refetch.",
+      "alembic/versions/007_widen_role_hint.py + app/models.py:418 entity_mentions.role_hint is now Text (was VARCHAR(80)), removing the specific write that triggered the original StringDataRightTruncationError.",
+      "tests/test_agent_job_cycle.py both tests pass against a live scratch Postgres (TEST_DATABASE_URL=postgresql+asyncpg://erickpg@localhost:5432/stratum_sourcing_test): '2 passed' — ran via `.venv/bin/python -m pytest tests/test_agent_job_cycle.py -q`."
+    ]
+  },
+  "coverage": {
+    "except_blocks_total": 37,
+    "except_blocks_touching_session": 2,
+    "except_blocks_touching_session_note": "Only 2 of the 37 except blocks in app/ have a try-body that performs session I/O (query/flush/commit/ORM-attribute-read on a persistent object): app/database.py:33 (get_db(), the correct centralized per-request rollback) and app/services/agent_pipeline.py:757 (the already-fixed motivating-bug handler, see motivating_bug_status). No other except block in the corpus has a try-body that touches the AsyncSession, so no further no_rollback/orm_read_in_handler instances of the literal motivating-bug shape were found. The defects below are a different but related shape: exception-type mismatches, transaction-scope-too-wide, and unobserved failures.",
+    "task_entrypoints_total": 6,
+    "task_entrypoints_read": [
+      "app/tasks/agent_jobs.py",
+      "app/tasks/cadence_scan.py",
+      "app/tasks/morning_digest.py",
+      "app/tasks/nightly_scan.py",
+      "app/tasks/notion_control_plane.py",
+      "app/tasks/notion_export.py"
+    ],
+    "cycle_functions_read": [
+      "run_agent_job_cycle (app/services/agent_pipeline.py:723-776)",
+      "process_agent_job / process_entity_extractor_job / process_research_job / process_entity_scorer_job / process_source_expander_job / process_source_onboarder_job (app/services/agent_pipeline.py)",
+      "process_signal_scan_job (app/services/signal_engine.py:389-557), including its per-batch loop at 433-456",
+      "run_scan / _scan_single_source (app/pipeline/orchestrator.py:31-360), including process_source's per-source try/except at 83-101 and the asyncio.gather at 104-107",
+      "dispatch_outbox_events / claim_pending_jobs / claim_pending_events (app/services/job_queue.py)",
+      "sync_findings_to_ocean, sync_source_registry_to_notion, sync_watch_targets_to_notion, reconcile_source_registry, pull_status_updates, run_full_notion_sync, ensure_control_plane (app/services/notion_control.py)"
+    ],
+    "files_read": [
+      "app/database.py",
+      "app/config.py",
+      "app/main.py",
+      "app/api/deps.py",
+      "app/api/routes.py",
+      "app/api/console.py",
+      "app/services/agent_pipeline.py",
+      "app/services/job_queue.py",
+      "app/services/ops_client.py",
+      "app/services/signal_engine.py",
+      "app/services/source_pipeline.py",
+      "app/services/notion_control.py",
+      "app/pipeline/orchestrator.py",
+      "app/pipeline/analyzer.py",
+      "app/pipeline/prefilter.py",
+      "app/pipeline/deduplicator.py",
+      "app/pipeline/differ.py",
+      "app/pipeline/scorer.py",
+      "app/pipeline/tracker.py",
+      "app/integrations/llm.py",
+      "app/integrations/notion_sync.py",
+      "app/integrations/slack_bot.py",
+      "app/sources/base.py",
+      "app/sources/web_fetcher.py",
+      "app/sources/rss_fetcher.py",
+      "app/sources/browser_fetcher.py",
+      "app/sources/registry.py",
+      "app/sources/url_unwrap.py",
+      "app/tasks/agent_jobs.py",
+      "app/tasks/cadence_scan.py",
+      "app/tasks/morning_digest.py",
+      "app/tasks/nightly_scan.py",
+      "app/tasks/notion_control_plane.py",
+      "app/tasks/notion_export.py",
+      "entrypoint.sh",
+      "tests/test_agent_job_cycle.py",
+      "tests/conftest.py"
+    ],
+    "not_read": [
+      {"path": "app/schemas.py", "reason": "grep-verified 0 except blocks and no session/db reference (pure Pydantic request/response models); not read line-by-line"},
+      {"path": "app/models.py", "reason": "grep-verified 0 except blocks, 0 'async def', 0 session/event-listener references (pure SQLAlchemy declarative models); only the role_hint column was inspected directly to verify the motivating-bug fix"},
+      {"path": "alembic/env.py", "reason": "migration harness, not a runtime error path"},
+      {"path": "alembic/versions/001_initial_schema.py, 002_widen_scan_run_status.py, 003_placeholder.py, 004_control_plane_foundation.py, 005_signal_engine.py, 006_entity_typing_and_gate.py", "reason": "schema history; only grepped for dedup_hash/role_hint to answer specific questions, not read in full. 007_widen_role_hint.py was targeted-checked to confirm the motivating-bug fix"},
+      {"path": "scripts/import_scan_data.py, scripts/seed_demo_fixtures.py, scripts/seed_signals.py, scripts/sourcing_run/*.py (7 files)", "reason": "not referenced by entrypoint.sh's TASK_MODE dispatch and not part of the request-serving path; manually-invoked one-off/maintenance scripts, out of scope for the per-cron/per-request error-path hunt this contract targets"},
+      {"path": "tests/test_signal_scoring.py", "reason": "pure-function unit test for compute_scan_scoring; unrelated to session/exception-handling behavior"},
+      {"path": "app/pipeline/__init__.py, app/services/__init__.py, app/sources/__init__.py, app/api/__init__.py, app/__init__.py", "reason": "confirmed empty or near-empty (0-1 lines) via wc -l"}
+    ]
+  },
+  "findings": [
+    {
+      "id": "B-01",
+      "class": "B",
+      "subclass": "escapes_to_process_exit",
+      "file": "app/services/agent_pipeline.py",
+      "line": 757,
+      "symbol": "run_agent_job_cycle",
+      "excerpt": "            except Exception as error:",
+      "failure_scenario": "A company entity scores >= settings.signal_scan_auto_threshold (0.60, app/config.py:91-93) during process_entity_scorer_job, which auto-enqueues a signal_scan job (app/services/agent_pipeline.py:670-677, enqueue_signal_scan). When run_agent_job_cycle later claims that job, process_signal_scan_job (app/services/signal_engine.py:389-462) runs up to len(signals)/batch_size sequential LLM calls, each with timeout_seconds=480 (line 445); batch_size defaults to 25 (app/config.py:97) and a full scan covers 200 signals (module docstring, signal_engine.py:3-4) => up to 8 sequential batches, each individually budgeted up to 480s (worst case 3840s for one job). All of this happens inside the SAME AsyncSession opened once at the top of run_agent_job_cycle (agent_pipeline.py:724) and held for the entire cycle. Meanwhile app/tasks/agent_jobs.py:14 wraps the WHOLE cycle in `asyncio.wait_for(run_agent_job_cycle(limit=limit), timeout=900)` with zero surrounding try/except in that file. If the cycle is still inside process_signal_scan_job's batch loop (or anywhere else) when the 900s budget expires, asyncio.wait_for cancels the underlying coroutine: a real asyncio.CancelledError is raised at whatever await point the cycle is suspended on. Since Python 3.8, CancelledError subclasses BaseException, not Exception, so it is NOT caught by the per-job `except Exception as error:` at agent_pipeline.py:757 (the already-fixed motivating-bug handler) -- it propagates straight through, unrolled-back for that job, past run_agent_job_cycle, gets turned into asyncio.TimeoutError by wait_for at the agent_jobs.py:14 call site, and then propagates uncaught out of run_agent_jobs() (no try/except anywhere in app/tasks/agent_jobs.py) and out of asyncio.run() in __main__. `python -m app.tasks.agent_jobs` exits non-zero; entrypoint.sh's `set -e` (line 2) propagates that to the container exit code; Railway reports 'Deploy Crashed'. The in-flight job is left with status='running' and a live lease (claimed at agent_pipeline.py:739-748 and committed at line 731 before the loop) until claim_pending_jobs' 45-minute stale-lease reclaim (app/services/job_queue.py:136,154) picks it back up -- i.e. it is not lost, but it is stuck and unreported for up to 45 minutes, and every other job still queued in that cycle's batch of up to `limit` (default 25) never gets a turn.",
+      "blast_radius": "process_exit",
+      "severity": "critical",
+      "reachable_from": "timeout",
+      "reachability_evidence": "Mechanism traced exhaustively via literal citations above (app/tasks/agent_jobs.py:14, app/services/agent_pipeline.py:724,739-748,757, app/services/signal_engine.py:389-456, app/config.py:91-97). Whether it fires on a *typical* production run depends on real LLM batch latency, which is not observable from the corpus (no logs/metrics available here) -- but the configured ceiling (up to 8 batches x 480s = 3840s against a 900s budget) makes this reachable well before any pathological edge case, since even 2 batches at close to the per-batch timeout already exceeds the 900s budget.",
+      "gate": {
+        "kind": "test",
+        "assert": "In tests/test_agent_job_cycle.py-style harness: seed an AgentJob of job_type='signal_scan' plus its Entity/Signal rows, monkeypatch signal_engine.run_ops_json_prompt to `await asyncio.sleep(large)`, then call `await asyncio.wait_for(agent_pipeline.run_agent_job_cycle(limit=5, lease_owner='test'), timeout=<small>)` and assert it raises asyncio.TimeoutError (proving the cancellation path is exercised). Then assert one of: (a) the job's row ends up status in ('retry','failed') with last_error set and lease_owner is None (proving mark_job_failed ran despite the cancellation) -- this currently FAILS because CancelledError skips the except block entirely, leaving status='running' and lease_owner set; or (b) if (a) is judged out of scope, assert instead that app.tasks.agent_jobs.run_agent_jobs wraps its asyncio.wait_for call in a try/except that maps CancelledError/TimeoutError to a controlled, logged exit rather than letting an unhandled traceback surface -- this currently FAILS since app/tasks/agent_jobs.py has no try/except at all."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-02",
+      "class": "B",
+      "subclass": "batch_lost_on_item_failure",
+      "file": "app/services/notion_control.py",
+      "line": 604,
+      "symbol": "sync_findings_to_ocean",
+      "excerpt": "            page = await api.create_page(\n                data_source_id=data_source_id,\n                properties=properties,\n                children=children,\n            )\n            finding.notion_page_id = page[\"id\"]",
+      "failure_scenario": "sync_findings_to_ocean (notion_control.py:556-622) opens one AsyncSession (line 562), loads up to 50 Findings with notion_page_id IS NULL (lines 570-578), then loops calling api.create_page (a real, non-idempotent write to Notion, line 604) and setting `finding.notion_page_id = page[\"id\"]` in memory (line 609) for each -- with a single `await db.commit()` after the entire loop (line 621) and no try/except anywhere in the loop body (lines 581-619). NotionAPI._request (line 197) calls `response.raise_for_status()`, so any transient Notion error (429 rate limit, 5xx, or a validation 400 on one finding's properties) raises an uncaught httpx.HTTPStatusError partway through the loop. Findings already successfully given a real Notion page in this same call (e.g. items 1..24 of 50) never get their notion_page_id committed, because the exception unwinds the whole `async with async_session_factory() as db:` block before `await db.commit()` runs, and the session's implicit close/rollback discards the in-memory notion_page_id assignments. The next run's WHERE Finding.notion_page_id IS NULL filter (line 573) picks up those same 24 findings again and calls api.create_page for them a second time, silently creating duplicate pages in Notion.",
+      "blast_radius": "silent_data_loss",
+      "severity": "high",
+      "reachable_from": "external",
+      "reachability_evidence": "app/services/notion_control.py:189-198 (NotionAPI._request) has zero retry/backoff logic and calls response.raise_for_status() unconditionally on every Notion API call in this file; no `except httpx` anywhere in notion_control.py (confirmed via grep). This is reached every time app/tasks/notion_export.py runs (TASK_MODE=notion-export) or the /tasks/notion-sync / /webhooks/notion/source-registry HTTP paths fire.",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed 3 Findings with notion_page_id=None. Monkeypatch NotionAPI.create_page so the first 2 calls return a fake page id and the 3rd raises httpx.HTTPStatusError. Call sync_findings_to_ocean() and expect the exception to propagate (current behavior). Then re-query the 3 findings from a fresh session and assert findings 1 and 2 have notion_page_id set to the values the fake create_page returned. This currently FAILS: none of the three findings has notion_page_id persisted, because the single commit at line 621 never runs."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-03",
+      "class": "B",
+      "subclass": "session_lifecycle",
+      "file": "app/services/notion_control.py",
+      "line": 658,
+      "symbol": "run_full_notion_sync",
+      "excerpt": "    async with async_session_factory() as db:\n        control = await ensure_control_plane(db)\n        registry = await sync_source_registry_to_notion(db)\n        watchlists = await sync_watch_targets_to_notion(db)\n        await db.commit()",
+      "failure_scenario": "run_full_notion_sync shares ONE transaction across three separate Notion-writing passes: ensure_control_plane (creates/updates control-plane databases, up to 3 create_database calls at line 343), sync_source_registry_to_notion (one create_page/update_page per Source, lines 482-489, no per-item try/except), and sync_watch_targets_to_notion (one create_page/update_page per WatchTarget, lines 544-548, no per-item try/except) -- with the only commit at line 663, after all three have fully finished. If, say, watch-target #40 of 60 fails (Notion 429, network blip), the exception unwinds the whole `async with` block: none of the 39 already-created/updated watch-target pages, and none of the source-registry pages synced earlier in the SAME call, get their *_page_id columns committed. The next run re-syncs (and for creates, re-creates) all of them, because the ORM objects were never persisted with their new Notion page ids. This is the same one-transaction-spans-a-whole-batch pattern as B-02, but here it spans two independent sync passes instead of one loop, so its blast radius on a partial failure is larger.",
+      "blast_radius": "silent_data_loss",
+      "severity": "high",
+      "reachable_from": "external",
+      "reachability_evidence": "Same NotionAPI._request.raise_for_status() path as B-02 (notion_control.py:197), reached on every TASK_MODE=notion-export run via run_notion_sync -> run_full_notion_sync (app/tasks/notion_export.py:16) and via POST /tasks/notion-sync (app/api/routes.py:236-243).",
+      "gate": {
+        "kind": "test",
+        "assert": "Seed 2 Sources and 2 WatchTargets, all without notion_page_id. Monkeypatch NotionAPI.create_page/update_page so the source-registry pass succeeds fully but the second WatchTarget's create_page raises. Call run_full_notion_sync() (or sync_source_registry_to_notion + sync_watch_targets_to_notion under one session, matching lines 660-663) and assert that after the exception, the first Source's notion_page_id (synced successfully before the failure) IS persisted when re-read from a fresh session. This currently FAILS -- the source-registry work is rolled back along with the watch-target work because they share one uncommitted transaction."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-04",
+      "class": "B",
+      "subclass": "escapes_to_process_exit",
+      "file": "app/api/routes.py",
+      "line": 222,
+      "symbol": "trigger_nightly_scan (and 5 sibling handlers: trigger_morning_digest:232, trigger_notion_sync:242, trigger_notion_control_plane:252, trigger_agent_jobs:262, trigger_cadence_scan:272)",
+      "excerpt": "    from app.tasks.nightly_scan import run_nightly_scan\n\n    asyncio.create_task(run_nightly_scan())\n    return TaskTriggerResponse(status=\"accepted\", message=\"Nightly scan started\")",
+      "failure_scenario": "Each of these 6 HTTP endpoints is a parallel, manually-triggerable invocation path for the same 6 task functions that Railway's TASK_MODE crons run. They fire the task with a bare `asyncio.create_task(...)`: no variable holds the returned Task, no `await`, no `.add_done_callback`, no exception handler is attached. If the underlying coroutine raises (any of the causes covered by B-01/B-05/B-06/B-07, or an ordinary llm/db_error/external failure that its own internal except-and-reraise lets through, e.g. app/tasks/nightly_scan.py:21-23), CPython's default asyncio exception handler prints 'Task exception was never retrieved' plus a traceback to stderr and moves on -- the FastAPI/uvicorn process does NOT crash (fire-and-forget task exceptions do not propagate to the event loop or terminate it), so Railway's crash-based alerting never fires either. The HTTP caller already received `{\"status\": \"accepted\"}` before the task even started running, so they have no way to learn it failed. This is the mirror image of B-01/B-08: instead of an over-loud crash, the failure is completely silent -- no crash, no alert, no error surfaced to the caller, only a stderr line that nothing is known to read.",
+      "blast_radius": "silent_data_loss",
+      "severity": "high",
+      "reachable_from": "unknown",
+      "reachability_evidence": "Cause-agnostic: any exception the six wrapped task functions can raise (LLM, DB, network, or a re-raised timeout per B-05/06/07) triggers this failure mode identically. Reachable whenever /tasks/* is called with a valid X-Cron-Secret (app/api/deps.py:17-22) -- there is no code-level restriction limiting this to non-production use.",
+      "gate": {
+        "kind": "test",
+        "assert": "Install a custom asyncio exception handler via `loop.set_exception_handler(...)` before the test, monkeypatch app.tasks.nightly_scan.run_nightly_scan to raise immediately, POST /tasks/nightly-scan with a valid cron secret via the FastAPI TestClient, then `await asyncio.sleep(0)` to let the created task run. Assert that the custom handler recorded the exception (proving it happened) AND assert some independently-observable, durable signal exists (e.g. a row written to a task-run-log table, or the HTTP response itself carrying a correlation id the caller can poll for status). This currently FAILS on the second assertion: there is no durable, queryable record that the triggered task failed -- only the unread exception handler call and a stderr line."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-05",
+      "class": "B",
+      "subclass": "session_lifecycle",
+      "file": "app/tasks/morning_digest.py",
+      "line": 21,
+      "symbol": "run_morning_digest",
+      "excerpt": "    except asyncio.TimeoutError:\n        logger.error(\"morning_digest_timeout\", msg=\"Task exceeded 120s timeout\")\n    except Exception as e:\n        logger.error(\"morning_digest_failed\", error=str(e))\n        raise",
+      "failure_scenario": "run_morning_digest wraps `send_morning_digest()` in `asyncio.wait_for(..., timeout=120)`. On a genuine timeout (e.g. a slow Slack API call or a slow DB query under load), the asyncio.TimeoutError branch logs and falls through with no `raise` and no return value -- the function (`-> None`) returns normally. `python -m app.tasks.morning_digest` therefore exits 0, entrypoint.sh reports the task as completed, and Railway records success, even though the digest was never sent. This is indistinguishable, from the outside, from the two legitimate 'nothing to do' paths inside send_morning_digest (no findings in the last 24h, line 175-177; or the digest for today was already sent, line 213-215) which also return without sending anything. All three outcomes -- sent, intentionally skipped, and timed-out-and-gave-up -- currently produce the same process exit code and the same absence of any exception.",
+      "blast_radius": "silent_data_loss",
+      "severity": "medium",
+      "reachable_from": "timeout",
+      "reachability_evidence": "app/tasks/morning_digest.py:16 `sent = await asyncio.wait_for(send_morning_digest(), timeout=120)`; send_morning_digest (app/integrations/slack_bot.py:150-234) makes a live Slack API call (chat_postMessage, line 218) with no explicit httpx-level timeout override, so it inherits whatever slack_sdk's AsyncWebClient default is; a slow Slack response or DB contention on the findings query is enough to exceed 120s.",
+      "gate": {
+        "kind": "test",
+        "assert": "Monkeypatch app.tasks.morning_digest.send_morning_digest to `await asyncio.sleep(1)` while patching the module's asyncio.wait_for timeout down to a fraction of a second (or monkeypatch asyncio.wait_for directly to force a TimeoutError). Call run_morning_digest() and assert it raises (or returns a value/sets a module-level flag) that a caller can distinguish from the 'no findings, nothing to send' success case. This currently FAILS: both paths return None with nothing raised."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-06",
+      "class": "B",
+      "subclass": "session_lifecycle",
+      "file": "app/tasks/nightly_scan.py",
+      "line": 19,
+      "symbol": "run_nightly_scan",
+      "excerpt": "    except asyncio.TimeoutError:\n        logger.error(\"nightly_scan_timeout\", msg=\"Task exceeded 30min timeout\")\n    except Exception as e:\n        logger.error(\"nightly_scan_failed\", error=str(e))\n        raise",
+      "failure_scenario": "Identical shape to B-05: `asyncio.wait_for(run_due_scan(), timeout=1800)` (line 17) on a timeout is logged but not re-raised, so run_nightly_scan returns normally and the process exits 0. Any sources not yet reached by the scan (run_scan processes sources concurrently up to settings.fetch_concurrency=5 at a time, orchestrator.py:78,104-107) are simply left un-scanned for that night, with no failure signal anywhere Railway or an operator would see -- only a stderr-adjacent structlog line.",
+      "blast_radius": "silent_data_loss",
+      "severity": "medium",
+      "reachable_from": "timeout",
+      "reachability_evidence": "app/tasks/nightly_scan.py:17; run_due_scan -> run_scan (app/pipeline/orchestrator.py:145-147,31-142) fans out over every active, due Source with per-source fetch+diff+LLM-analyze latency (up to ~300s per source in the worst case per the LLM provider timeouts in app/integrations/llm.py:161,332), so the 1800s budget is a real constraint once the due-source count grows.",
+      "gate": {
+        "kind": "test",
+        "assert": "Same shape as B-05's gate: force a TimeoutError out of the wait_for around run_due_scan() and assert run_nightly_scan() raises or otherwise signals failure rather than returning normally. Currently FAILS."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-07",
+      "class": "B",
+      "subclass": "session_lifecycle",
+      "file": "app/tasks/notion_export.py",
+      "line": 19,
+      "symbol": "run_notion_sync",
+      "excerpt": "    except asyncio.TimeoutError:\n        logger.error(\"notion_sync_timeout\", msg=\"Task exceeded timeout\")\n    except Exception as e:\n        logger.error(\"notion_sync_failed\", error=str(e))\n        raise",
+      "failure_scenario": "Same shape as B-05/B-06: `asyncio.wait_for(run_full_notion_sync(), timeout=900)` (line 16) on timeout is logged but not re-raised, so the process exits 0 even though the sync did not complete. Combined with B-03 (run_full_notion_sync's single shared transaction across two sync passes), a timeout here can also abandon in-flight Notion writes uncommitted, and the caller (Railway) is told the run succeeded.",
+      "blast_radius": "silent_data_loss",
+      "severity": "medium",
+      "reachable_from": "timeout",
+      "reachability_evidence": "app/tasks/notion_export.py:16; run_full_notion_sync (notion_control.py:658-673) makes a sequential (non-concurrent) chain of Notion API calls per Source and per WatchTarget with only a 30s-per-request httpx timeout (notion_control.py:189) but no cap on the total number of sequential requests, so the 900s outer budget scales with catalog size.",
+      "gate": {
+        "kind": "test",
+        "assert": "Same shape as B-05/B-06's gate, applied to run_notion_sync()/run_full_notion_sync(). Currently FAILS."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-08",
+      "class": "B",
+      "subclass": "escapes_to_process_exit",
+      "file": "app/tasks/cadence_scan.py",
+      "line": 18,
+      "symbol": "run_cadence_scan",
+      "excerpt": "    run_id = await asyncio.wait_for(\n        run_due_scan(cadence_bucket=cadence_bucket, limit=limit),\n        timeout=1800,\n    )",
+      "failure_scenario": "run_cadence_scan calls the exact same run_due_scan() as nightly_scan.py (B-06), but with zero try/except anywhere in the file. On a genuine 1800s timeout OR any other exception (DB connectivity loss, an unhandled error from outside process_source's per-source isolation, e.g. the ScanRun-creation or ScanRun-update blocks at orchestrator.py:43-73 and 114-122 which are NOT inside the per-source try/except), the exception propagates straight out of run_cadence_scan(), out of asyncio.run() in __main__, crashing `python -m app.tasks.cadence_scan` with a non-zero exit -- Railway reports 'Deploy Crashed'. Unlike nightly_scan.py, which at least swallows (if incorrectly) the TimeoutError case, cadence_scan.py has no handling at all, for the same underlying call. On a real 1800s timeout, the outer asyncio.wait_for cancellation also reaches `asyncio.gather(*(process_source(s) for s in sources), return_exceptions=True)` (orchestrator.py:104-107): return_exceptions=True only changes how a CHILD's own exception is surfaced, it does not shield gather() from an externally-triggered cancellation of the coroutine awaiting it, so an outer timeout here cancels every still-in-flight process_source task at once via CancelledError, discarding whatever uncommitted per-source work (fetch/diff/analyze already done, but not yet committed at orchestrator.py:343) was in progress for ALL sources still running at that instant, not just one.",
+      "blast_radius": "process_exit",
+      "severity": "high",
+      "reachable_from": "timeout",
+      "reachability_evidence": "app/tasks/cadence_scan.py:13-22 (whole file, no try/except present); run_due_scan is the identical function nightly_scan.py calls, so B-06's reachability evidence (per-source LLM latency vs. 1800s budget) applies equally here. How often the cadence-scan invocation specifically (vs. nightly-scan) accumulates enough due sources to hit 1800s is not observable from the corpus (depends on CADENCE_LIMIT/CADENCE_BUCKET env vars and live source counts, not present in this repo).",
+      "gate": {
+        "kind": "test",
+        "assert": "Monkeypatch app.pipeline.orchestrator.run_due_scan to raise asyncio.TimeoutError directly (simulating the wait_for outcome) and call run_cadence_scan(); assert it either raises cleanly with a logged, attributable error (acceptable, matches the crash-and-alert design) OR does not raise and instead returns a failure-indicating value -- pick one and assert it consistently with whatever B-06/B-07's gate settles on for the sibling tasks. Today the two behaviors (this file crashes on ANY exception; nightly_scan.py swallows TimeoutError specifically) are inconsistent for the same underlying call, which is the concrete assertion this gate should pin down once a decision is made (see open_questions)."
+      },
+      "confidence": "traced"
+    },
+    {
+      "id": "B-09",
+      "class": "B",
+      "subclass": "session_lifecycle",
+      "file": "app/pipeline/orchestrator.py",
+      "line": 171,
+      "symbol": "_scan_single_source",
+      "excerpt": "    async with async_session_factory() as db:\n        # Store snapshot regardless of success/failure\n        snapshot = Snapshot(",
+      "failure_scenario": "The AsyncSession opened at line 171 stays open across compute_diff (DB read, line 206), filter_blocks' embedding HTTP call (line 229, up to 30s httpx timeout per prefilter.py:115), dedup_blocks_against_findings' embedding HTTP call (line 247), and analyze_diff's LLM call (line 260, up to ~300s worst case per the provider timeouts in app/integrations/llm.py) -- all before the single commit at line 343. Up to settings.fetch_concurrency=5 (app/config.py:77) sources run this concurrently (orchestrator.py:78,104-107), so up to 5 of the engine's pool_size=5+max_overflow=10=15 connections (app/database.py:17-18) can each be held open, mid-transaction, for the full duration of an LLM call at once. This does not by itself exceed the pool budget (5 < 15), but it does mean: (a) each such transaction holds a live Postgres connection idle-in-transaction for as long as the slowest external call in the chain, well past typical statement-execution time, and (b) an already-flushed-but-uncommitted Snapshot/Source-row update (lines 183-201) is invisible to any other reader (including a concurrently-running manual /tasks/cadence-scan or /tasks/nightly-scan trigger, see B-04's open question) until analyze_diff finishes.",
+      "blast_radius": "one_batch",
+      "severity": "medium",
+      "reachable_from": "llm",
+      "reachability_evidence": "app/pipeline/orchestrator.py:171-343 is one continuous `async with async_session_factory() as db:` block spanning compute_diff, filter_blocks, dedup_blocks_against_findings, and analyze_diff; app/config.py:76-78 (fetch_concurrency default 5) and app/database.py:14-19 (pool_size=5, max_overflow=10) give the concrete numbers.",
+      "gate": {
+        "kind": "test",
+        "assert": "Monkeypatch app.pipeline.analyzer.analyze_diff to `await asyncio.sleep(N)` and, from a SECOND independent AsyncSession/connection opened concurrently, poll the Source row being scanned; assert its `onboarding_status`/`next_ingest_at` (set at orchestrator.py:198-201, before analyze_diff is called) becomes visible to the second connection only after the first connection's final commit (line 343), not immediately after the update statement -- proving the update is held uncommitted for the full analyze_diff duration. This currently passes as 'expected' isolation behavior but the assertion should exist so a future change to commit earlier (e.g. splitting FETCH+DIFF persistence from ANALYZE+STORE into two transactions) is a deliberate, tested decision rather than an accidental one."
+      },
+      "confidence": "traced"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q-01",
+      "topic": "Contract shape: the given subclass taxonomy does not cover every defect shape found",
+      "description": "The requested subclass enum is no_rollback | orm_read_in_handler | escapes_to_process_exit | batch_lost_on_item_failure | session_lifecycle. Three of the findings above (B-01's CancelledError-vs-Exception type mismatch, B-04's fire-and-forget asyncio.create_task whose exception is never retrieved by anyone, and B-05/B-06/B-07's caught-but-swallowed asyncio.TimeoutError that turns a real failure into a false process-success) do not map cleanly onto any of the five: B-01 involves no database session at all (it is a pure exception-type gap between what asyncio.wait_for's cancellation raises and what the handler catches); B-04 is the inverse of escapes_to_process_exit (the exception explicitly does NOT escape to anywhere observable -- it is dropped); B-05/06/07 are the inverse of batch_lost_on_item_failure (nothing is lost from a batch, the whole run is abandoned but reported as a success). I mapped each to the closest existing label and described the actual mechanism in failure_scenario, but a revised taxonomy for this corpus would likely want two more subclasses: unretrieved_task_exception and swallowed_timeout_masks_success.",
+      "options": [],
+      "evidence": "See findings B-01, B-04, B-05, B-06, B-07 above for the literal mechanism each represents."
+    },
+    {
+      "id": "Q-02",
+      "topic": "What should happen when a task entrypoint's asyncio.wait_for budget is exceeded?",
+      "description": "The 6 TASK_MODE entrypoints implement 3 different behaviors for structurally the same situation (an outer wait_for around the task's main work): (1) agent_jobs.py and cadence_scan.py have no try/except at all, so ANY exception -- a genuine timeout, an internal bug, a DB outage -- crashes the process and pages via Railway's Deploy Crashed alert. (2) morning_digest.py, nightly_scan.py, and notion_export.py catch asyncio.TimeoutError specifically and swallow it (log only, no raise), so a timeout is reported as success, while every OTHER exception type is logged and re-raised (crashes). (3) notion_control_plane.py has no asyncio.wait_for at all -- no outer runtime budget, bounded only by the sum of its internal per-call httpx timeouts (30s each) and however many Sources/API calls it loops through.",
+      "options": [
+        "A: standardize on 'crash and alert' for every timeout (match agent_jobs.py/cadence_scan.py's current behavior for the other 4 tasks; requires removing the swallow-and-log-only branches in morning_digest.py/nightly_scan.py/notion_export.py).",
+        "B: standardize on 'log and report a distinguishable non-success' for every timeout across all 6 tasks (requires adding try/except + wait_for to agent_jobs.py, cadence_scan.py, and notion_control_plane.py, and giving every task a way to signal 'ran but did not finish' distinct from both full success and a hard crash -- e.g. a nonzero-but-not-traceback exit code, or a row written to a task-run log)."
+      ],
+      "evidence": "app/tasks/agent_jobs.py:12-15, app/tasks/cadence_scan.py:13-22, app/tasks/morning_digest.py:15-25, app/tasks/nightly_scan.py:16-23, app/tasks/notion_export.py:15-23, app/tasks/notion_control_plane.py:16-51 (no wait_for present)."
+    },
+    {
+      "id": "Q-03",
+      "topic": "Should the Notion-writing sync loops commit per item?",
+      "description": "sync_findings_to_ocean, sync_source_registry_to_notion, and sync_watch_targets_to_notion each perform a real, non-idempotent Notion write (create_page/update_page) per item inside a loop, then commit once after the whole loop. Because Notion page creation is not idempotent and the query that selects 'work to do' is based on notion_page_id IS NULL, a mid-loop failure causes the next run to re-create pages that were already successfully created on the previous, failed run (B-02, B-03).",
+      "options": [
+        "A: commit after each successfully-synced item (weaker atomicity per call, but no duplicate Notion pages on partial failure).",
+        "B: keep one commit per call, but make Notion writes idempotent some other way (e.g. look up by a stable external key before creating, or store a client-generated idempotency key Notion can dedupe on, if the Notion API supports one).",
+        "C: leave as-is if duplicate Notion pages on rare partial failure are considered an acceptable, manually-cleaned-up cost."
+      ],
+      "evidence": "app/services/notion_control.py:556-622 (sync_findings_to_ocean), 467-492 (sync_source_registry_to_notion), 495-553 (sync_watch_targets_to_notion), 658-664 (run_full_notion_sync's shared transaction)."
+    },
+    {
+      "id": "Q-04",
+      "topic": "Are the /tasks/* HTTP trigger endpoints meant to be a production-parallel invocation path?",
+      "description": "app/api/routes.py:216-273 exposes the same 6 tasks Railway's TASK_MODE crons run, behind only a shared X-Cron-Secret header, invoked via a fire-and-forget asyncio.create_task with no result tracking (B-04). Failures via this path are invisible to both the HTTP caller and to any alerting, which is a materially weaker guarantee than the TASK_MODE cron path.",
+      "options": [
+        "A: intended as a permanent manual-ops convenience -- if so, it needs its own failure-observability (e.g. persisted task-run records, or return a pollable status) since it currently has none.",
+        "B: intended only for local/staging testing and should not be reachable in production, or should be logged/alerted distinctly from a normal request.",
+        "C: not actually needed given TASK_MODE already covers scheduling -- candidate for removal."
+      ],
+      "evidence": "app/api/routes.py:213-273; app/api/deps.py:17-22 (verify_cron_secret, the only gate)."
+    }
+  ]
+}
